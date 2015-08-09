@@ -474,7 +474,12 @@ static int Open ( vlc_object_t *p_this )
         }
 
         free( s );
-
+        /* 
+           stream_Seek actually calls the a function like that:
+           ret = s->pf_control(s, cmd, ap);
+           though it has same params as demux_t.pf_control 
+           this must come from vlc_object_t *p_this 
+        */
         /* It will nearly always work even for non seekable stream thanks the
          * caching system, and if it fails we lose just a few sub */
         if( stream_Seek( p_demux->s, unicode ? 3 : 0 ) )
