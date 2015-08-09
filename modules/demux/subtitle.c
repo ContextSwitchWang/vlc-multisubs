@@ -238,6 +238,7 @@ static int Open ( vlc_object_t *p_this )
         VLC_COMMON_MEMBERS
     };
     considering the definition obviously demux_t is larger than *p_this, how come?
+    the answer maybe that the caller used a different definition, which will match.
 */
 {
     demux_t        *p_demux = (demux_t*)p_this;
