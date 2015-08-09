@@ -232,6 +232,13 @@ static char * get_language_from_filename( const char * );
  * Module initializer
  *****************************************************************************/
 static int Open ( vlc_object_t *p_this )
+/*
+    struct vlc_object_t  
+    {
+        VLC_COMMON_MEMBERS
+    };
+    considering the definition obviously demux_t is larger than *p_this, how come?
+*/
 {
     demux_t        *p_demux = (demux_t*)p_this;
     demux_sys_t    *p_sys;
