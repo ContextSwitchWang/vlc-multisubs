@@ -237,8 +237,10 @@ static int Open ( vlc_object_t *p_this )
     {
         VLC_COMMON_MEMBERS
     };
-    considering the definition obviously demux_t is larger than *p_this, how come?
-    the answer maybe that the caller used a different definition, which will match.
+    considering the definition obviously demux_t is larger than *p_this,
+    how come?
+    the answer maybe that the caller used a different definition,
+    which will match.
 */
 {
     demux_t        *p_demux = (demux_t*)p_this;
@@ -516,6 +518,11 @@ static int Open ( vlc_object_t *p_this )
 
     msg_Dbg( p_demux, "loading all subtitles..." );
 
+    /*
+       my understanding is that it loads text line by line,
+       from one stream_t, but one file may contain many subtitles,
+       thus needing the detection of many subtitles.
+    */
     /* Load the whole file */
     TextLoad( &p_sys->txt, p_demux->s );
 
@@ -589,6 +596,7 @@ static int Open ( vlc_object_t *p_this )
         fmt.i_extra = strlen( p_sys->psz_header ) + 1;
         fmt.p_extra = strdup( p_sys->psz_header );
     }
+    /*Such an Add is provided in demux_t *p_demux*/
     p_sys->es = es_out_Add( p_demux->out, &fmt );
     es_format_Clean( &fmt );
 
@@ -751,6 +759,7 @@ static int Demux( demux_t *p_demux )
 
         memcpy( p_block->p_buffer, p_subtitle->psz_text, i_len );
 
+        /* it seems p_demux must have its out prepare with a es_out_Send method*/
         es_out_Send( p_demux->out, p_sys->es, p_block );
 
         p_sys->i_subtitle++;
