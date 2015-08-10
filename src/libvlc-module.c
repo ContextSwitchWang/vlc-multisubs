@@ -1625,6 +1625,10 @@ vlc_module_begin ()
                  SUB_PATH_TEXT, SUB_PATH_LONGTEXT, true )
     add_integer( "sub-margin", 0, SUB_MARGIN_TEXT,
                  SUB_MARGIN_LONGTEXT, true )
+    add_integer( "sub2-margin", 0, SUB_MARGIN_TEXT,
+                 SUB_MARGIN_LONGTEXT, true )
+
+
     set_section( N_( "Overlays" ) , NULL )
     add_module_list( "sub-source", "sub source", NULL,
                      SUB_SOURCE_TEXT, SUB_SOURCE_LONGTEXT, false )
