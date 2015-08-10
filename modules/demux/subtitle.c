@@ -596,7 +596,10 @@ static int Open ( vlc_object_t *p_this )
         fmt.i_extra = strlen( p_sys->psz_header ) + 1;
         fmt.p_extra = strdup( p_sys->psz_header );
     }
-    /*Such an Add is provided in demux_t *p_demux*/
+    /*
+      Such an Add is provided in demux_t *p_demux
+      It seems src/input/es_out.c provides an implement.
+    */
     p_sys->es = es_out_Add( p_demux->out, &fmt );
     es_format_Clean( &fmt );
 
