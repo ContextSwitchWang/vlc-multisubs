@@ -1651,10 +1651,10 @@ vlc_module_begin ()
         change_safe ()
     add_integer( "sub-track", -1,
                  INPUT_SUBTRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
-/*      change_safe ()
+        change_safe ()
     add_integer( "sub2-track", -1,
                  INPUT_SUBTRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
-*/
+  
         change_safe ()
     add_string( "audio-language", "",
                  INPUT_AUDIOTRACK_LANG_TEXT, INPUT_AUDIOTRACK_LANG_LONGTEXT,
@@ -1663,10 +1663,10 @@ vlc_module_begin ()
     add_string( "sub-language", "",
                  INPUT_SUBTRACK_LANG_TEXT, INPUT_SUBTRACK_LANG_LONGTEXT,
                   false )
-/*      change_safe ()
+        change_safe ()
     add_string( "sub2-language", "",
                  INPUT_SUBTRACK_LANG_TEXT, INPUT_SUBTRACK_LANG_LONGTEXT,
-                  false )*/
+                  false )  
         change_safe ()
     add_string( "menu-language", "",
                  INPUT_MENUTRACK_LANG_TEXT, INPUT_MENUTRACK_LANG_LONGTEXT,
@@ -1677,10 +1677,10 @@ vlc_module_begin ()
         change_safe ()
     add_integer( "sub-track-id", -1,
                  INPUT_SUBTRACK_ID_TEXT, INPUT_SUBTRACK_ID_LONGTEXT, true )
-/*      change_safe ()
+        change_safe ()
     add_integer( "sub2-track-id", -1,
                  INPUT_SUBTRACK_ID_TEXT, INPUT_SUBTRACK_ID_LONGTEXT, true )
-*/
+  
         change_safe ()
     add_integer( "preferred-resolution", -1, INPUT_PREFERREDRESOLUTION_TEXT,
                  INPUT_PREFERREDRESOLUTION_LONGTEXT, false )
