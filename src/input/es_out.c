@@ -138,6 +138,7 @@ struct es_out_sys_t
     int         i_default_sub_id;   /* As specified in container; if applicable */
     char        **ppsz_audio_language;
     char        **ppsz_sub_language;
+    char        **ppsz_sub2_language;
 
     /* current main es */
     es_out_id_t *p_es_audio;
@@ -284,6 +285,16 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, int i_rate )
             for( int i = 0; p_sys->ppsz_sub_language[i]; i++ )
                 msg_Dbg( p_input, "selected subtitle language[%d] %s",
                          i, p_sys->ppsz_sub_language[i] );
+        }
+        free( psz_string );
+        
+        psz_string = var_GetString( p_input, "sub2-language" );
+        p_sys->ppsz_sub_language2 = LanguageSplit( psz_string, false );
+        if( p_sys->ppsz_sub_language2 )
+        {
+            for( int i = 0; p_sys->ppsz_sub_language2[i]; i++ )
+                msg_Dbg( p_input, "selected 2nd subtitle language[%d] %s",
+                         i, p_sys->ppsz_sub_language2[i] );
         }
         free( psz_string );
     }
