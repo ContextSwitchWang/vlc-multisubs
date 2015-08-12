@@ -102,7 +102,6 @@ struct es_out_id_t
 
     /* ID for the meta data */
     int         i_meta_id;
-//  int i_selected;/*0 unselected, 1 fst, 2 snd*/
 };
 
 struct es_out_sys_t
@@ -134,15 +133,15 @@ struct es_out_sys_t
     /* es/group to select */
     int         i_group_id;
     int         i_audio_last, i_audio_id;
-    int         i_sub_last[2], i_sub_id[2];
+    int         i_sub_last, i_sub_id;
     int         i_default_sub_id;   /* As specified in container; if applicable */
     char        **ppsz_audio_language;
-    char        **ppsz_sub_language[2];
+    char        **ppsz_sub_language;
 
     /* current main es */
     es_out_id_t *p_es_audio;
     es_out_id_t *p_es_video;
-    es_out_id_t *p_es_sub[2]; //may be multiple select
+    es_out_id_t *p_es_sub;
 
     /* delay */
     int64_t i_audio_delay;
@@ -200,8 +199,6 @@ static char **LanguageSplit( const char *psz_langs, bool b_default_any );
 static int LanguageArrayIndex( char **ppsz_langs, const char *psz_lang );
 
 static char *EsOutProgramGetMetaName( es_out_pgrm_t *p_pgrm );
-int EsOutSelectSpu(es_out_sys_t* , es_out_id_t *, int );
-bool EsOutUnSelectSpu(es_out_sys_t* , es_out_id_t *);
 
 static const vlc_fourcc_t EsOutFourccClosedCaptions[4] = {
     VLC_FOURCC('c', 'c', '1', ' '),
@@ -261,9 +258,7 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, int i_rate )
     /* */
     p_sys->i_group_id = var_GetInteger( p_input, "program" );
     p_sys->i_audio_last = var_GetInteger( p_input, "audio-track" );
-    p_sys->i_sub_last[0] = var_GetInteger( p_input, "sub-track" );
-    p_sys->i_sub_last[1] = var_GetInteger( p_input, "sub2-track" );
-
+    p_sys->i_sub_last = var_GetInteger( p_input, "sub-track" );
 
     p_sys->i_default_sub_id   = -1;
 
@@ -282,31 +277,19 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, int i_rate )
         free( psz_string );
 
         psz_string = var_GetString( p_input, "sub-language" );
-        p_sys->ppsz_sub_language[0] = LanguageSplit( psz_string, false );
-        if( p_sys->ppsz_sub_language[0] )
+        p_sys->ppsz_sub_language = LanguageSplit( psz_string, false );
+        if( p_sys->ppsz_sub_language )
         {
-            for( int i = 0; p_sys->ppsz_sub_language[0][i]; i++ )
+            for( int i = 0; p_sys->ppsz_sub_language[i]; i++ )
                 msg_Dbg( p_input, "selected subtitle language[%d] %s",
-                         i, p_sys->ppsz_sub_language[0][i] );
-        }
-        free( psz_string );
-        
-        psz_string = var_GetString( p_input, "sub2-language" );
-        p_sys->ppsz_sub_language[1] = LanguageSplit( psz_string, false );
-        if( p_sys->ppsz_sub_language[1] )
-        {
-            for( int i = 0; p_sys->ppsz_sub_language[1][i]; i++ )
-                msg_Dbg( p_input, "selected 2nd subtitle language[%d] %s",
-                         i, p_sys->ppsz_sub_language[1][i] );
+                         i, p_sys->ppsz_sub_language[i] );
         }
         free( psz_string );
     }
 
     p_sys->i_audio_id = var_GetInteger( p_input, "audio-track-id" );
 
-    p_sys->i_sub_id[0] = var_GetInteger( p_input, "sub-track-id" );
-    p_sys->i_sub_id[1] = var_GetInteger( p_input, "sub2-track-id" );
-
+    p_sys->i_sub_id = var_GetInteger( p_input, "sub-track-id" );
 
     p_sys->i_pause_date = -1;
 
@@ -333,19 +316,14 @@ static void EsOutDelete( es_out_t *out )
             free( p_sys->ppsz_audio_language[i] );
         free( p_sys->ppsz_audio_language );
     }
-    if( p_sys->ppsz_sub_language[1])
+    if( p_sys->ppsz_sub_language )
     {
-        for( int i = 0; p_sys->ppsz_sub_language[1][i]; i++ )
-            free( p_sys->ppsz_sub_language[1][i] );
-        free( p_sys->ppsz_sub_language[1] );
+        for( int i = 0; p_sys->ppsz_sub_language[i]; i++ )
+            free( p_sys->ppsz_sub_language[i] );
+        free( p_sys->ppsz_sub_language );
     }
-    if( p_sys->ppsz_sub_language[0])
-    {
-        for( int i = 0; p_sys->ppsz_sub_language[0][i]; i++ )
-            free( p_sys->ppsz_sub_language[0][i] );
-        free( p_sys->ppsz_sub_language[0] );
-    }
-       vlc_mutex_destroy( &p_sys->lock );
+
+    vlc_mutex_destroy( &p_sys->lock );
 
     free( p_sys );
     free( out );
@@ -1017,8 +995,7 @@ static void EsOutProgramSelect( es_out_t *out, es_out_pgrm_t *p_pgrm )
         }
 
         p_sys->p_es_audio = NULL;
-        p_sys->p_es_sub[0] = NULL;
-        p_sys->p_es_sub[1] = NULL;
+        p_sys->p_es_sub = NULL;
         p_sys->p_es_video = NULL;
     }
 
@@ -1740,7 +1717,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
     es_out_sys_t      *p_sys = out->p_sys;
 
     int i_cat = es->fmt.i_cat;
-    int i = 0;
+
     if( !p_sys->b_active ||
         ( !b_force && es->fmt.i_priority < ES_PRIORITY_SELECTABLE_MIN ) )
     {
@@ -1826,10 +1803,70 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         }
         else if( i_cat == SPU_ES )
         {
-            i = 0;
-            i_wanted = EsOutSelectSpu(p_sys, es, i);
-            if(i_wanted <= 0)
-                i_wanted = EsOutSelectSpu(p_sys, es, ++i);
+            if( p_sys->ppsz_sub_language )
+            {
+                int es_idx = LanguageArrayIndex( p_sys->ppsz_sub_language,
+                                     es->psz_language_code );
+                if( !p_sys->p_es_sub )
+                {
+                    /* Select the language if it's in the list */
+                    if( es_idx >= 0 ||
+                        /*FIXME: Should default subtitle not in the list be 
+                         * displayed if not forbidden by none? */
+                        ( p_sys->i_default_sub_id >= 0 &&
+                          /* check if the subtitle isn't forbidden by none */
+                          LanguageArrayIndex( p_sys->ppsz_sub_language, "none" ) < 0 &&
+                          es->i_id == p_sys->i_default_sub_id ) )
+                        i_wanted = es->i_channel;
+                }
+                else
+                {
+                    int selected_es_idx =
+                        LanguageArrayIndex( p_sys->ppsz_sub_language,
+                                            p_sys->p_es_sub->psz_language_code );
+
+                    if( es_idx >= 0 &&
+                        ( selected_es_idx < 0 || es_idx < selected_es_idx ||
+                          ( es_idx == selected_es_idx &&
+                            p_sys->p_es_sub->fmt.i_priority < es->fmt.i_priority ) ) )
+                        i_wanted = es->i_channel;
+                }
+            }
+            else if ( es->fmt.i_codec == EsOutFourccClosedCaptions[0] ||
+                      es->fmt.i_codec == EsOutFourccClosedCaptions[1] ||
+                      es->fmt.i_codec == EsOutFourccClosedCaptions[2] ||
+                      es->fmt.i_codec == EsOutFourccClosedCaptions[3])
+            {
+                    /* We don't want to enable on initial create since p_master
+                       isn't set yet (otherwise we will think it's a standard
+                       ES_SUB stream and cause a resource leak) */
+                    return;
+            }
+            else
+            {
+                /* If there is no user preference, select the default subtitle 
+                 * or adapt by ES priority */
+                if( ( !p_sys->p_es_sub &&
+                      ( p_sys->i_default_sub_id >= 0 &&
+                        es->i_id == p_sys->i_default_sub_id ) ) ||
+                    ( p_sys->p_es_sub && 
+                      p_sys->p_es_sub->fmt.i_priority < es->fmt.i_priority ) )
+                    i_wanted = es->i_channel;
+                else if( p_sys->p_es_sub &&
+                         p_sys->p_es_sub->fmt.i_priority >= es->fmt.i_priority )
+                    i_wanted = p_sys->p_es_sub->i_channel;
+            }
+
+            if( p_sys->i_sub_last >= 0 )
+                i_wanted  = p_sys->i_sub_last;
+
+            if( p_sys->i_sub_id >= 0 )
+            {
+                if( es->i_id == p_sys->i_sub_id )
+                    i_wanted = es->i_channel;
+                else
+                    return;
+            }
         }
         else if( i_cat == VIDEO_ES )
         {
@@ -1856,11 +1893,14 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         }
         else if( i_cat == SPU_ES )
         {
-            if( EsOutUnSelectSpu(p_sys, es))
+            if( p_sys->i_mode == ES_OUT_MODE_AUTO &&
+                p_sys->p_es_sub &&
+                p_sys->p_es_sub != es &&  /*that unselect other subs*/
+                EsIsSelected( p_sys->p_es_sub ) )
             {
-                EsUnselect( out, p_sys->p_es_sub[i], false );
+                EsUnselect( out, p_sys->p_es_sub, false );
             }
-            p_sys->p_es_sub[i] = es;
+            p_sys->p_es_sub = es;
         }
         else if( i_cat == VIDEO_ES )
         {
@@ -1988,11 +2028,8 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         es->pb_cc_present[i] = true;
 
         /* Enable if user specified on command line */
-        if (p_sys->i_sub_last[0] == i)
+        if (p_sys->i_sub_last == i)
             EsOutSelect(out, es->pp_cc_es[i], true);
-        if (p_sys->i_sub_last[1] == i)
-            EsOutSelect(out, es->pp_cc_es[i], true);
-
     }
 
     vlc_mutex_unlock( &p_sys->lock );
@@ -2043,13 +2080,11 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
 
     /* */
     if( p_sys->p_es_audio == es || p_sys->p_es_video == es ||
-        p_sys->p_es_sub[0] == es ||  p_sys->p_es_sub[1] == es) b_reselect = true;
+        p_sys->p_es_sub == es ) b_reselect = true;
 
     if( p_sys->p_es_audio == es ) p_sys->p_es_audio = NULL;
     if( p_sys->p_es_video == es ) p_sys->p_es_video = NULL;
-    if( p_sys->p_es_sub[0]   == es ) p_sys->p_es_sub[0]   = NULL;
-    if( p_sys->p_es_sub[1]   == es ) p_sys->p_es_sub[1]   = NULL;
-
+    if( p_sys->p_es_sub   == es ) p_sys->p_es_sub   = NULL;
 
     switch( es->fmt.i_cat )
     {
@@ -2992,99 +3027,4 @@ static void EsOutUpdateInfo( es_out_t *out, es_out_id_t *es, const es_format_t *
     }
     /* */
     input_Control( p_input, INPUT_REPLACE_INFOS, p_cat );
-}
-
-/*deal with the logic of which channel to choose*/
-int EsOutSelectSpu(es_out_sys_t *p_sys, es_out_id_t *es, int i)
-{
-    int i_wanted = -1;
-    if( p_sys->ppsz_sub_language[i] )
-            {
-                int es_idx = LanguageArrayIndex( p_sys->ppsz_sub_language[i],
-                                     es->psz_language_code );
-                if( !p_sys->p_es_sub[i] )
-                {
-                    /* Select the language if it's in the list */
-                    if( es_idx >= 0 ||
-                        /*FIXME: Should default subtitle not in the list be 
-                         * displayed if not forbidden by none? */
-                        ( p_sys->i_default_sub_id >= 0 &&
-                          /* check if the subtitle isn't forbidden by none */
-                          LanguageArrayIndex( p_sys->ppsz_sub_language[i], "none" ) < 0 &&
-                          es->i_id == p_sys->i_default_sub_id ) )
-                        i_wanted = es->i_channel;
-                }
-                else
-                {
-                    int selected_es_idx =
-                        LanguageArrayIndex( p_sys->ppsz_sub_language[i],
-                                            p_sys->p_es_sub[i]->psz_language_code );
-
-                    if( es_idx >= 0 &&
-                        ( selected_es_idx < 0 || es_idx < selected_es_idx ||
-                          ( es_idx == selected_es_idx &&
-                            p_sys->p_es_sub[i]->fmt.i_priority < es->fmt.i_priority ) ) )
-                        i_wanted = es->i_channel;
-                }
-            }
-            else if ( es->fmt.i_codec == EsOutFourccClosedCaptions[0] ||
-                      es->fmt.i_codec == EsOutFourccClosedCaptions[1] ||
-                      es->fmt.i_codec == EsOutFourccClosedCaptions[2] ||
-                      es->fmt.i_codec == EsOutFourccClosedCaptions[3])
-            {
-                    /* We don't want to enable on initial create since p_master
-                       isn't set yet (otherwise we will think it's a standard
-                       ES_SUB stream and cause a resource leak) */
-                    return -2;
-            }
-            else
-            {
-                /* If there is no user preference, select the default subtitle 
-                 * or adapt by ES priority */
-                if( ( !p_sys->p_es_sub[i] &&
-                      ( p_sys->i_default_sub_id >= 0 &&
-                        es->i_id == p_sys->i_default_sub_id ) ) ||
-                    ( p_sys->p_es_sub[i] && 
-                      p_sys->p_es_sub[i]->fmt.i_priority < es->fmt.i_priority ) )
-                    i_wanted = es->i_channel;
-                else if( p_sys->p_es_sub[i] &&
-                         p_sys->p_es_sub[i]->fmt.i_priority >= es->fmt.i_priority )
-                    i_wanted = p_sys->p_es_sub[i]->i_channel;
-            }
-
-            if( p_sys->i_sub_last >= 0 )
-                i_wanted  = p_sys->i_sub_last;
-
-            if( p_sys->i_sub_id >= 0 )
-            {
-                if( es->i_id == p_sys->i_sub_id )
-                    i_wanted = es->i_channel;
-                else
-                    return -2;
-            }
-        return i_wanted;
- }
-
-/*return if we need to unselect this channel*/
-bool EsOutUnSelectSpu(es_out_sys_t *p_sys, es_out_id_t *es)
-{
-    if(p_sys->i_mode != ES_OUT_MODE_AUTO )
-        return false;
-    bool sub1 = EsIsSelected( p_sys->p_es_sub[0] );
-    bool sub2 = EsIsSelected( p_sys->p_es_sub[1] );
-    if(!sub1 && !sub2)
-        return false;
-
-    if(sub1 && sub2)
-        return p_sys->p_es_sub[0] &&
-                p_sys->p_es_sub[0] != es &&  
-                p_sys->p_es_sub[1] &&
-                p_sys->p_es_sub[1] != es;
-    else
-    if(sub1)
-        return p_sys->p_es_sub[0] &&
-                p_sys->p_es_sub[0] != es;
-    else
-        return p_sys->p_es_sub[1] &&
-                p_sys->p_es_sub[1] != es;
 }
