@@ -258,6 +258,7 @@ static int SubsAutoMenuBuilder( input_thread_t *p_input,
         QVector<vlc_object_t *> &objects, QVector<const char *> &varnames )
 {
     PUSH_INPUTVAR( "spu-es" );
+    PUSH_INPUTVAR( "spu-es2" );
 
     return VLC_SUCCESS;
 }
@@ -644,6 +645,7 @@ QMenu *VLCMenuBar::SubtitleMenu( intf_thread_t *p_intf, QMenu *current, bool b_p
         addDPStaticEntry( current, qtr( "Add &Subtitle File..." ), "",
                 SLOT( loadSubtitlesFile() ) );
         addActionWithSubmenu( current, "spu-es", qtr( "Sub &Track" ) );
+        addActionWithSubmenu( current, "spu-es2", qtr( "Sub2 &Track" ) );
         current->addSeparator();
     }
 
@@ -1049,7 +1051,7 @@ QMenu* VLCMenuBar::PopupMenu( intf_thread_t *p_intf, bool show )
         action = menu->addMenu( SubtitleMenu( p_intf, submenu, true ) );
         action->setText( qtr( "Subti&tle") );
         UpdateItem( p_intf, submenu, "spu-es", VLC_OBJECT(p_input), true );
-
+        UpdateItem( p_intf, submenu, "spu-es2", VLC_OBJECT(p_input), true );
         /* Playback menu for chapters */
         submenu = new QMenu( menu );
         action = menu->addMenu( NavigMenu( p_intf, submenu ) );
@@ -1234,6 +1236,12 @@ void VLCMenuBar::UpdateItem( intf_thread_t *p_intf, QMenu *menu,
         const char *psz_var, vlc_object_t *p_object, bool b_submenu )
 {
     vlc_value_t val, text;
+    bool sub2 = false;
+    if(!strcmp(psz_var,"spu-es2")) //hack
+    {
+        psz_var = "spu-es";
+        sub2 = true;
+    }
     int i_type;
 
     QAction *action = FindActionWithVar( menu, psz_var );
@@ -1295,7 +1303,7 @@ void VLCMenuBar::UpdateItem( intf_thread_t *p_intf, QMenu *menu,
 
     /* Some specific stuff */
     bool forceDisabled = false;
-    if( !strcmp( psz_var, "spu-es" ) )
+    if( !strcmp( psz_var, "spu-es" ))
     {
         vout_thread_t *p_vout = THEMIM->getVout();
         forceDisabled = ( p_vout == NULL );
