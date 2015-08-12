@@ -1895,7 +1895,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         {
             if( p_sys->i_mode == ES_OUT_MODE_AUTO &&
                 p_sys->p_es_sub &&
-                p_sys->p_es_sub != es &&
+                p_sys->p_es_sub != es &&  /*that unselect other subs*/
                 EsIsSelected( p_sys->p_es_sub ) )
             {
                 EsUnselect( out, p_sys->p_es_sub, false );

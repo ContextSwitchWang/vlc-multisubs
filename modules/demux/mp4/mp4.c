@@ -1080,7 +1080,7 @@ static int Demux( demux_t *p_demux )
                 tk = tk_tmp;
             }
         }
-    }
+    }/*so if there're more valid tracks, the last one will be used?*/
 
     if ( !tk )
     {

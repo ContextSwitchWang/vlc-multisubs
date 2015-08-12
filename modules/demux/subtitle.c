@@ -522,6 +522,9 @@ static int Open ( vlc_object_t *p_this )
        my understanding is that it loads text line by line,
        from one stream_t, but one file may contain many subtitles,
        thus needing the detection of many subtitles.
+       But for subrip, there's only one stream, the subtitles 
+       are text for different time. So still, only subtitle is demuxed 
+       from one stream.
     */
     /* Load the whole file */
     TextLoad( &p_sys->txt, p_demux->s );
@@ -1006,6 +1009,11 @@ static int ParseSubRipSubViewer( demux_t *p_demux, subtitle_t *p_subtitle,
 
             while( ( p = strstr( psz_text, "[br]" ) ) )
             {
+                /*
+                   so p[3] must end with null, and will be move 3 charater left
+                   but why place it here, to reuse the extra space?
+                   wouldn't it be better if we search psz_text+i_old
+                */
                 *p++ = '\n';
                 memmove( p, &p[3], strlen(&p[3])+1 );
             }
