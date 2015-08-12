@@ -574,6 +574,7 @@ static const char *const ppsz_clock_descriptions[] =
     "(from 0 to n).")
 
 #define INPUT_SUBTRACK_TEXT N_("Subtitle track")
+#define INPUT_SUB2TRACK_TEXT N_("2nd Subtitle track")
 #define INPUT_SUBTRACK_LONGTEXT N_( \
     "Stream number of the subtitle track to use " \
     "(from 0 to n).")
@@ -584,6 +585,8 @@ static const char *const ppsz_clock_descriptions[] =
     "(comma separated, two or three letter country code, you may use 'none' to avoid a fallback to another language).")
 
 #define INPUT_SUBTRACK_LANG_TEXT N_("Subtitle language")
+#define INPUT_SUB2TRACK_LANG_TEXT N_("2nd Subtitle language")
+
 #define INPUT_SUBTRACK_LANG_LONGTEXT N_( \
     "Language of the subtitle track you want to use " \
     "(comma separated, two or three letters country code, you may use 'any' as a fallback).")
@@ -599,6 +602,8 @@ static const char *const ppsz_clock_descriptions[] =
     "Stream ID of the audio track to use.")
 
 #define INPUT_SUBTRACK_ID_TEXT N_("Subtitle track ID")
+#define INPUT_SUB2TRACK_ID_TEXT N_("2nd Subtitle track ID")
+
 #define INPUT_SUBTRACK_ID_LONGTEXT N_( \
     "Stream ID of the subtitle track to use.")
 
@@ -1650,7 +1655,7 @@ vlc_module_begin ()
                  INPUT_AUDIOTRACK_TEXT, INPUT_AUDIOTRACK_LONGTEXT, true )
         change_safe ()
     add_integer( "sub-track", -1,
-                 INPUT_SUBTRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
+                 INPUT_SUB2TRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
         change_safe ()
     add_integer( "sub2-track", -1,
                  INPUT_SUBTRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
@@ -1661,7 +1666,7 @@ vlc_module_begin ()
                   false )
         change_safe ()
     add_string( "sub-language", "",
-                 INPUT_SUBTRACK_LANG_TEXT, INPUT_SUBTRACK_LANG_LONGTEXT,
+                 INPUT_SUB2TRACK_LANG_TEXT, INPUT_SUBTRACK_LANG_LONGTEXT,
                   false )
         change_safe ()
     add_string( "sub2-language", "",
@@ -1676,7 +1681,7 @@ vlc_module_begin ()
                  INPUT_AUDIOTRACK_ID_LONGTEXT, true )
         change_safe ()
     add_integer( "sub-track-id", -1,
-                 INPUT_SUBTRACK_ID_TEXT, INPUT_SUBTRACK_ID_LONGTEXT, true )
+                 INPUT_SUB2TRACK_ID_TEXT, INPUT_SUBTRACK_ID_LONGTEXT, true )
         change_safe ()
     add_integer( "sub2-track-id", -1,
                  INPUT_SUBTRACK_ID_TEXT, INPUT_SUBTRACK_ID_LONGTEXT, true )
