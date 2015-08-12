@@ -102,6 +102,7 @@ struct es_out_id_t
 
     /* ID for the meta data */
     int         i_meta_id;
+    bool b_Selected;
 };
 
 struct es_out_sys_t
@@ -141,7 +142,7 @@ struct es_out_sys_t
     /* current main es */
     es_out_id_t *p_es_audio;
     es_out_id_t *p_es_video;
-    es_out_id_t *p_es_sub;
+ // es_out_id_t *p_es_sub; may be multiple select
 
     /* delay */
     int64_t i_audio_delay;
