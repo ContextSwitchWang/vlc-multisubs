@@ -1236,14 +1236,7 @@ void VLCMenuBar::UpdateItem( intf_thread_t *p_intf, QMenu *menu,
         const char *psz_var, vlc_object_t *p_object, bool b_submenu )
 {
     vlc_value_t val, text;
-    bool sub2 = false;
-    if(!strcmp(psz_var,"spu-es2")) //hack
-    {
-        psz_var = "spu-es";
-        sub2 = true;
-    }
     int i_type;
-
     QAction *action = FindActionWithVar( menu, psz_var );
     if( action )
         DeleteNonStaticEntries( action->menu() );
@@ -1303,7 +1296,7 @@ void VLCMenuBar::UpdateItem( intf_thread_t *p_intf, QMenu *menu,
 
     /* Some specific stuff */
     bool forceDisabled = false;
-    if( !strcmp( psz_var, "spu-es" ))
+    if( !strcmp( psz_var, "spu-es") || !strcmp(psz_var,"spu-es2") )
     {
         vout_thread_t *p_vout = THEMIM->getVout();
         forceDisabled = ( p_vout == NULL );
@@ -1323,9 +1316,8 @@ void VLCMenuBar::UpdateItem( intf_thread_t *p_intf, QMenu *menu,
                 submenu = new QMenu( menu );
                 action->setMenu( submenu );
             }
-
-            action->setEnabled(
-                CreateChoicesMenu( submenu, psz_var, p_object ) == 0 );
+            action->setEnabled(CreateChoicesMenu( submenu, psz_var, p_object ) == 0
+                );
             if( forceDisabled )
                 action->setEnabled( false );
         }
@@ -1377,7 +1369,6 @@ int VLCMenuBar::CreateChoicesMenu( QMenu *submenu, const char *psz_var,
 {
     vlc_value_t val, val_list, text_list;
     int i_type, i;
-
     /* Check the type of the object variable */
     i_type = var_Type( p_object, psz_var );
 
