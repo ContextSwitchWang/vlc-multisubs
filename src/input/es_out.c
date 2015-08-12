@@ -334,6 +334,12 @@ static void EsOutDelete( es_out_t *out )
             free( p_sys->ppsz_sub_language[i] );
         free( p_sys->ppsz_sub_language );
     }
+    if( p_sys->ppsz_sub_language2 )
+    {
+        for( int i = 0; p_sys->ppsz_sub_language2[i]; i++ )
+            free( p_sys->ppsz_sub_language2[i] );
+        free( p_sys->ppsz_sub_language2 );
+    }
 
     vlc_mutex_destroy( &p_sys->lock );
 
