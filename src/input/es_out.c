@@ -200,7 +200,7 @@ static char **LanguageSplit( const char *psz_langs, bool b_default_any );
 static int LanguageArrayIndex( char **ppsz_langs, const char *psz_lang );
 
 static char *EsOutProgramGetMetaName( es_out_pgrm_t *p_pgrm );
-void EsOutSelectSpu(es_out_sys_t* , es_out_id_t *, int );
+int EsOutSelectSpu(es_out_sys_t* , es_out_id_t *, int );
 bool EsOutUnSelectSpu(es_out_sys_t* , es_out_id_t *);
 
 static const vlc_fourcc_t EsOutFourccClosedCaptions[4] = {
@@ -1988,9 +1988,9 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         es->pb_cc_present[i] = true;
 
         /* Enable if user specified on command line */
-        if (p_sys->i_sub[0]_last == i)
+        if (p_sys->i_sub_last[0] == i)
             EsOutSelect(out, es->pp_cc_es[i], true);
-        if (p_sys->i_sub[1]_last == i)
+        if (p_sys->i_sub_last[1] == i)
             EsOutSelect(out, es->pp_cc_es[i], true);
 
     }
@@ -2995,7 +2995,7 @@ static void EsOutUpdateInfo( es_out_t *out, es_out_id_t *es, const es_format_t *
 }
 
 /*deal with the logic of which channel to choose*/
-void EsOutSelectSpu(es_out_sys_t *p_sys, es_out_id_t *es, int i)
+int EsOutSelectSpu(es_out_sys_t *p_sys, es_out_id_t *es, int i)
 {
     int i_wanted = -1;
     if( p_sys->ppsz_sub_language[i] )
