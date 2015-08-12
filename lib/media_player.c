@@ -376,7 +376,7 @@ static int track_type_from_name(const char *psz_name)
        return libvlc_track_video;
     else if( !strcmp( psz_name, "audio-es" ) )
         return libvlc_track_audio;
-    else if( !strcmp( psz_name, "spu-es" ) || !strcmp( psz_name, "spu-es2")
+    else if( !strcmp( psz_name, "spu-es" ) || !strcmp( psz_name, "spu-es2"))
         return libvlc_track_text;
     else
         return libvlc_track_unknown;
