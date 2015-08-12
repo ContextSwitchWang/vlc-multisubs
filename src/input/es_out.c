@@ -142,7 +142,7 @@ struct es_out_sys_t
     /* current main es */
     es_out_id_t *p_es_audio;
     es_out_id_t *p_es_video;
- // es_out_id_t *p_es_sub; may be multiple select
+ // es_out_id_t *p_es_sub; may be multiple select, no need to use this
 
     /* delay */
     int64_t i_audio_delay;
