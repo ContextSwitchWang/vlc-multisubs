@@ -200,8 +200,8 @@ static char **LanguageSplit( const char *psz_langs, bool b_default_any );
 static int LanguageArrayIndex( char **ppsz_langs, const char *psz_lang );
 
 static char *EsOutProgramGetMetaName( es_out_pgrm_t *p_pgrm );
-void EsOutSelectSpu(es_out_sys_t , es_out_id_t , int );
-bool EsOutUnSelectSpu(es_out_sys_t , es_out_id_t );
+void EsOutSelectSpu(es_out_sys_t* , es_out_id_t *, int );
+bool EsOutUnSelectSpu(es_out_sys_t* , es_out_id_t *);
 
 static const vlc_fourcc_t EsOutFourccClosedCaptions[4] = {
     VLC_FOURCC('c', 'c', '1', ' '),
