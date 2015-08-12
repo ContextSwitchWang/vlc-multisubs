@@ -289,12 +289,12 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, int i_rate )
         free( psz_string );
         
         psz_string = var_GetString( p_input, "sub2-language" );
-        p_sys->ppsz_sub_language2 = LanguageSplit( psz_string, false );
-        if( p_sys->ppsz_sub_language2 )
+        p_sys->ppsz_sub2_language = LanguageSplit( psz_string, false );
+        if( p_sys->ppsz_sub2_language )
         {
-            for( int i = 0; p_sys->ppsz_sub_language2[i]; i++ )
+            for( int i = 0; p_sys->ppsz_sub2_language[i]; i++ )
                 msg_Dbg( p_input, "selected 2nd subtitle language[%d] %s",
-                         i, p_sys->ppsz_sub_language2[i] );
+                         i, p_sys->ppsz_sub2_language[i] );
         }
         free( psz_string );
     }
@@ -334,11 +334,11 @@ static void EsOutDelete( es_out_t *out )
             free( p_sys->ppsz_sub_language[i] );
         free( p_sys->ppsz_sub_language );
     }
-    if( p_sys->ppsz_sub_language2 )
+    if( p_sys->ppsz_sub2_language )
     {
-        for( int i = 0; p_sys->ppsz_sub_language2[i]; i++ )
-            free( p_sys->ppsz_sub_language2[i] );
-        free( p_sys->ppsz_sub_language2 );
+        for( int i = 0; p_sys->ppsz_sub2_language[i]; i++ )
+            free( p_sys->ppsz_sub2_language[i] );
+        free( p_sys->ppsz_sub2_language );
     }
 
     vlc_mutex_destroy( &p_sys->lock );
