@@ -48,6 +48,10 @@ vlc_module_end ()
 /****************************************************************************
  * Local structs
  ****************************************************************************/
+struct decoder_sys_t
+{
+    int                 i_align;          /* Subtitles alignment on the vout */
+};
 
 /*****************************************************************************
  * Open: probe the decoder and return score
@@ -55,6 +59,7 @@ vlc_module_end ()
 static int Open( vlc_object_t *p_this )
 {
     decoder_t     *p_dec = (decoder_t *) p_this;
+//  decoder_sys_t *p_sys;
 
     if( p_dec->fmt_in.i_codec != VLC_CODEC_TX3G )
         return VLC_EGENERIC;
@@ -63,6 +68,7 @@ static int Open( vlc_object_t *p_this )
 
     p_dec->fmt_out.i_cat = SPU_ES;
     p_dec->fmt_out.i_codec = 0;
+       
 
     return VLC_SUCCESS;
 }
@@ -412,7 +418,12 @@ static subpicture_t *Decode( decoder_t *p_dec, block_t **pp_block )
     p_spu->b_ephemer  = (p_block->i_length == 0);
     p_spu->b_absolute = false;
 
-    p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM;
+//    p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM;
+    if(p_dec->fmt_in.subs.i_ord == 1)
+        p_spu_sys->align = SUBPICTURE_ALIGN_TOP;
+    else 
+        p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM;
+
 
     /* Unwrap */
     text_segment_t *p_text_segments = p_segment3g->s;

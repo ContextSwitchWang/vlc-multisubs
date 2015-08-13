@@ -748,8 +748,15 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
     int i_type = INPUT_CONTROL_SET_ES;
     if( !strcmp( psz_cmd, "spu-es2" ))
     {
-        int i_type =  INPUT_CONTROL_SET_ES2;
+        i_type =  INPUT_CONTROL_SET_ES2;
+        msg_Dbg(p_input, "ESCallback spu-es2 val %d", newval.i_int);
     }
+    if( !strcmp( psz_cmd, "spu-es" ))
+    {
+        i_type =  INPUT_CONTROL_SET_ES;
+        msg_Dbg(p_input, "ESCallback spu-es val %d", newval.i_int);
+    }
+ 
     if( newval.i_int < 0 )//if set to negative, only cat matters
     {
         vlc_value_t v;
