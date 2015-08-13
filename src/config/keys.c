@@ -355,6 +355,8 @@ static const struct action actions[] =
     { "subsync-reset", ACTIONID_SUBSYNC_RESET, },
     { "subtitle-toggle", ACTIONID_SUBTITLE_TOGGLE, },
     { "subtitle-track", ACTIONID_SUBTITLE_TRACK, },
+    { "subtitle2-toggle", ACTIONID_SUBTITLE_TOGGLE2, },//2 is larger
+    { "subtitle2-track", ACTIONID_SUBTITLE_TRACK2, },
     { "title-next", ACTIONID_TITLE_NEXT, },
     { "title-prev", ACTIONID_TITLE_PREV, },
     { "toggle-autoscale", ACTIONID_TOGGLE_AUTOSCALE, },
