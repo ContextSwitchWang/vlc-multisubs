@@ -103,6 +103,7 @@ static const vlc_input_callback_t p_input_callbacks[] =
     CALLBACK( "video-es", ESCallback ),
     CALLBACK( "audio-es", ESCallback ),
     CALLBACK( "spu-es", ESCallback ),
+    CALLBACK( "spu-es2", ESCallback ),
     CALLBACK( "record", RecordCallback ),
     CALLBACK( "frame-next", FrameNextCallback ),
 
@@ -200,6 +201,11 @@ void input_ControlVarInit ( input_thread_t *p_input )
     var_Create( p_input, "spu-es", VLC_VAR_INTEGER | VLC_VAR_HASCHOICE );
     text.psz_string = _("Subtitle Track");
     var_Change( p_input, "spu-es", VLC_VAR_SETTEXT, &text, NULL );
+    /*the 2nd Spu Es the choices are the same*/
+    var_Create( p_input, "spu-es2", VLC_VAR_INTEGER);
+    text.psz_string = _("2nd Subtitle Track");
+    var_Change( p_input, "spu-es2", VLC_VAR_SETTEXT, &text, NULL );
+
 
     var_Create( p_input, "spu-choice", VLC_VAR_INTEGER );
     var_SetInteger( p_input, "spu-choice", -1 );
@@ -739,7 +745,11 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
 {
     input_thread_t *p_input = (input_thread_t*)p_this;
     VLC_UNUSED(oldval); VLC_UNUSED(p_data);//p_data is null when added
-
+    int i_type = INPUT_CONTROL_SET_ES;
+    if( !strcmp( psz_cmd, "spu-es2" ))
+    {
+        int i_type =  INPUT_CONTROL_SET_ES2;
+    }
     if( newval.i_int < 0 )//if set to negative, only cat matters
     {
         vlc_value_t v;
@@ -750,14 +760,17 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
             v.i_int = -VIDEO_ES;
         else if( !strcmp( psz_cmd, "spu-es" ) )
             v.i_int = -SPU_ES;
+        else if( !strcmp( psz_cmd, "spu-es2" ) )
+            v.i_int = -SPU_ES;//not sure what the hack is
+
         else
             v.i_int = 0;
         if( v.i_int != 0 )//push it, so input thread will process it later
-            input_ControlPush( p_input, INPUT_CONTROL_SET_ES, &v );
+            input_ControlPush( p_input, i_type, &v );
     }
     else
     {
-        input_ControlPush( p_input, INPUT_CONTROL_SET_ES, &newval );
+        input_ControlPush( p_input, i_type, &newval );
     }
 
     return VLC_SUCCESS;//the val will go to es_out_Control later
