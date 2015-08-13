@@ -391,7 +391,7 @@ static mtime_t EsOutGetWakeup( es_out_t *out )
 
 static es_out_id_t *EsOutGetFromID( es_out_t *out, int i_id )
 {
-    if( i_id < 0 )
+    if( i_id < 0 )//this is done in src/input/var.c
     {
         /* Special HACK, -i_id is the cat of the stream */
         return (es_out_id_t*)((uint8_t*)NULL-i_id);
@@ -2130,7 +2130,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
 static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
 {
     es_out_sys_t *p_sys = out->p_sys;
-
+    input_thread_t *p_input = p_sys->p_input;
     switch( i_query )
     {
     case ES_OUT_SET_ES_STATE:
@@ -2208,8 +2208,8 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_SET_ES:
     case ES_OUT_RESTART_ES:
     {
-        es_out_id_t *es = va_arg( args, es_out_id_t * );
 
+        es_out_id_t *es = va_arg( args, es_out_id_t * );
         int i_cat;
         if( es == NULL )
             i_cat = UNKNOWN_ES;
@@ -2496,7 +2496,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_SET_ES_DEFAULT_BY_ID:
     {
         const int i_id = (int)va_arg( args, int );
-        es_out_id_t *p_es = EsOutGetFromID( out, i_id );
+        es_out_id_t *p_es = EsOutGetFromID( out, i_id );//get the pointer with hack
         int i_new_query = 0;
 
         switch( i_query )
@@ -2506,7 +2506,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
         case ES_OUT_SET_ES_DEFAULT_BY_ID: i_new_query = ES_OUT_SET_ES_DEFAULT; break;
         default:
           vlc_assert_unreachable();
-        }
+        }//can't just call es_out_ControlLocked?
         /* TODO if the lock is made non recursive it should be changed */
         int i_ret = es_out_Control( out, i_new_query, p_es );
 
