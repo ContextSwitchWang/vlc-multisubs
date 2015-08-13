@@ -1552,6 +1552,7 @@ static bool EsIsSelected( es_out_id_t *es )
         return es->p_dec != NULL;
     }
 }
+
 static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es )
 {
     es_out_sys_t   *p_sys = out->p_sys;
@@ -1572,6 +1573,15 @@ static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es )
     }
 
     EsOutDecoderChangeDelay( out, p_es );
+}
+static void EsCreateDecoder2( es_out_t *out, es_out_id_t *p_es, int ord)
+{
+    EsCreateDecoder(out,p_es);
+    if(ord == 1)
+    {
+        //p_es->fmt->subs.//How to created a decoder for 2nd sub?
+    }
+    
 }
 static void EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es )
 {
@@ -2209,6 +2219,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_RESTART_ES:
     {
         es_out_id_t *es = va_arg( args, es_out_id_t * );
+        int ord = (int)va_arg(args, int);
 
         int i_cat;
         if( es == NULL )
@@ -2269,7 +2280,14 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_SET_ES_DEFAULT:
     {
         es_out_id_t *es = va_arg( args, es_out_id_t * );
-
+        int ord = (int)va_arg(args, int);
+        /*bypass logic of the 1st es*/
+        if(ord == 1)/*what if someone didn't give a snd param?*/
+        {
+            if( es->fmt.i_cat == SPU_ES )
+                p_sys->i_default_sub_id = es->i_id;
+            return VLC_SUCCESS; 
+        }
         if( es == NULL )
         {
             /*p_sys->i_default_video_id = -1;*/
@@ -2496,6 +2514,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_SET_ES_DEFAULT_BY_ID:
     {
         const int i_id = (int)va_arg( args, int );
+        const int i_ord = (int)va_arg(args, int );
         es_out_id_t *p_es = EsOutGetFromID( out, i_id );
         int i_new_query = 0;
 
@@ -2508,7 +2527,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
           vlc_assert_unreachable();
         }
         /* TODO if the lock is made non recursive it should be changed */
-        int i_ret = es_out_Control( out, i_new_query, p_es );
+        int i_ret = es_out_Control( out, i_new_query, p_es, i_ord );
 
         /* Clean up vout after user action (in active mode only).
          * FIXME it does not work well with multiple video windows */
