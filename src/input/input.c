@@ -2946,7 +2946,7 @@ static void input_SubtitleAdd( input_thread_t *p_input,
     }
     TAB_APPEND( p_input->p->i_slave, p_input->p->slave, sub );
 
-    if( !(i_flags & SUB_FORCED) )//one of them is false? in loading, the flag == SUB_FORCED==1, so we proceed 
+    if( !(i_flags & SUB_FORCED) )//one of them is false 
         return;
 
     /* Select the ES */
@@ -2958,7 +2958,7 @@ static void input_SubtitleAdd( input_thread_t *p_input,
         count.i_int++;
     /* if it was first one, there is disable too */
 
-    if( count.i_int < list.p_list->i_count )
+    if( count.i_int < list.p_list->i_count )//the count must have been increased by other thread, in EsOutAdd
     {
         const int i_id = list.p_list->p_values[count.i_int].i_int;
 
