@@ -133,7 +133,7 @@ struct es_out_sys_t
     /* es/group to select */
     int         i_group_id;
     int         i_audio_last, i_audio_id;
-    int         i_sub_last, i_sub_id;
+    int         i_sub_last[2], i_sub_id;
     int         i_default_sub_id;   /* As specified in container; if applicable */
     char        **ppsz_audio_language;
     char        **ppsz_sub_language;
@@ -141,7 +141,7 @@ struct es_out_sys_t
     /* current main es */
     es_out_id_t *p_es_audio;
     es_out_id_t *p_es_video;
-    es_out_id_t *p_es_sub;
+    es_out_id_t *p_es_sub[2];
 
     /* delay */
     int64_t i_audio_delay;
@@ -180,12 +180,12 @@ static int          EsOutControl( es_out_t *, int i_query, va_list );
 static void         EsOutDelete ( es_out_t * );
 
 static void         EsOutTerminate( es_out_t * );
-static void         EsOutSelect( es_out_t *, es_out_id_t *es, bool b_force );
+static void         EsOutSelect( es_out_t *, es_out_id_t *es, bool b_force, int );
 static void         EsOutUpdateInfo( es_out_t *, es_out_id_t *es, const es_format_t *, const vlc_meta_t * );
 static int          EsOutSetRecord(  es_out_t *, bool b_record );
 
-static bool EsIsSelected( es_out_id_t *es );
-static void EsSelect( es_out_t *out, es_out_id_t *es );
+static int EsIsSelected( es_out_id_t *es );
+static void EsSelect( es_out_t *out, es_out_id_t *es, int );
 static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update );
 static void EsOutDecoderChangeDelay( es_out_t *out, es_out_id_t *p_es );
 static void EsOutDecodersChangePause( es_out_t *out, bool b_paused, mtime_t i_date );
@@ -258,7 +258,9 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, int i_rate )
     /* */
     p_sys->i_group_id = var_GetInteger( p_input, "program" );
     p_sys->i_audio_last = var_GetInteger( p_input, "audio-track" );
-    p_sys->i_sub_last = var_GetInteger( p_input, "sub-track" );
+    p_sys->i_sub_last[0] = var_GetInteger( p_input, "sub-track" );
+    p_sys->i_sub_last[1] = var_GetInteger( p_input, "sub-track2" );
+
 
     p_sys->i_default_sub_id   = -1;
 
@@ -995,7 +997,9 @@ static void EsOutProgramSelect( es_out_t *out, es_out_pgrm_t *p_pgrm )
         }
 
         p_sys->p_es_audio = NULL;
-        p_sys->p_es_sub = NULL;
+        p_sys->p_es_sub[0] = NULL;
+        p_sys->p_es_sub[1] = NULL;
+
         p_sys->p_es_video = NULL;
     }
 
@@ -1024,7 +1028,7 @@ static void EsOutProgramSelect( es_out_t *out, es_out_pgrm_t *p_pgrm )
     {
         if( p_sys->es[i]->p_pgrm == p_sys->p_pgrm )
             EsOutESVarUpdate( out, p_sys->es[i], false );
-        EsOutSelect( out, p_sys->es[i], false );
+        EsOutSelect( out, p_sys->es[i], false, 0);/*set as 0th es in category*/
     }
 
     /* Update now playing */
@@ -1502,11 +1506,11 @@ static es_out_id_t *EsOutAdd( es_out_t *out, const es_format_t *fmt )
         es->pb_cc_present[i] = false;
     es->p_master = NULL;
 
-    if( es->p_pgrm == p_sys->p_pgrm )
+    if( es->p_pgrm == p_sys->p_pgrm )/*updating spu-es, so it appears right in intf*/
         EsOutESVarUpdate( out, es, false );
 
     /* Select it if needed */
-    EsOutSelect( out, es, false );
+    EsOutSelect( out, es, false, 0);
 
 
     TAB_APPEND( out->p_sys->i_es, out->p_sys->es, es );
@@ -1533,8 +1537,8 @@ static es_out_id_t *EsOutAdd( es_out_t *out, const es_format_t *fmt )
 
     return es;
 }
-
-static bool EsIsSelected( es_out_id_t *es )
+/*0 false, 1 1st, 2 nd ...*/
+static int EsIsSelected( es_out_id_t *es )
 {
     if( es->p_master )
     {
@@ -1549,11 +1553,16 @@ static bool EsIsSelected( es_out_id_t *es )
     }
     else
     {
-        return es->p_dec != NULL;
+        if( es->p_dec == NULL)
+            return 0;
+        else if(es->p_dec->fmt_in.subs.i_ord == 1)
+            return 2;
+        else 
+            return 1;
     }
 }
 
-static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es )
+static void EsCreateDecoderInner( es_out_t *out, es_out_id_t *p_es )
 {
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
@@ -1574,22 +1583,20 @@ static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es )
 
     EsOutDecoderChangeDelay( out, p_es );
 }
-static void EsCreateDecoder2( es_out_t *out, es_out_id_t *p_es, int ord)
+//the 3rd param seems unnecessary, but we can add a 3rd sub easily
+static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es, int ord)
 {
-    EsCreateDecoder(out,p_es);
-    if(ord == 1)
-    {
-        //p_es->fmt->subs.//How to created a decoder for 2nd sub?
-    }
+    EsCreateDecoderInner(out,p_es);
+    p_es->p_dec->fmt_in.subs.i_ord = ord;
     
 }
-static void EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es )
+static int EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es )
 {
     VLC_UNUSED(out);
 
     if( !p_es->p_dec )
-        return;
-
+        return 0;
+    int i_ord = p_es->p_dec->fmt_in.subs.i_ord;
     input_DecoderDelete( p_es->p_dec );
     p_es->p_dec = NULL;
 
@@ -1598,14 +1605,15 @@ static void EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es )
         input_DecoderDelete( p_es->p_dec_record );
         p_es->p_dec_record = NULL;
     }
+    return i_ord;
 }
 
-static void EsSelect( es_out_t *out, es_out_id_t *es )
+static void EsSelect( es_out_t *out, es_out_id_t *es, int i_ord )
 {
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
 
-    if( EsIsSelected( es ) )
+    if( EsIsSelected( es ) )/*we don't allow set the same sub as a second*/
     {
         msg_Warn( p_input, "ES 0x%x is already selected", es->i_id );
         return;
@@ -1652,14 +1660,14 @@ static void EsSelect( es_out_t *out, es_out_id_t *es )
             }
         }
 
-        EsCreateDecoder( out, es );
+        EsCreateDecoder( out, es, i_ord );
 
         if( es->p_dec == NULL || es->p_pgrm != p_sys->p_pgrm )
             return;
     }
 
     /* Mark it as selected */
-    input_SendEventEsSelect( p_input, es->fmt.i_cat, es->i_id );
+    input_SendEventEsSelect( p_input, es->fmt.i_cat, es->i_id, i_ord );
     input_SendEventTeletextSelect( p_input, EsFmtIsTeletext( &es->fmt ) ? es->i_id : -1 );
 }
 
@@ -1667,7 +1675,6 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
 {
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
-
     if( !EsIsSelected( es ) )
     {
         msg_Warn( p_input, "ES 0x%x is already unselected", es->i_id );
@@ -1686,16 +1693,17 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
     else
     {
         const int i_spu_id = var_GetInteger( p_input, "spu-es");
+        const int i_spu2_id = var_GetInteger( p_input, "spu-es2");
         int i;
         for( i = 0; i < 4; i++ )
         {
             if( !es->pb_cc_present[i] || !es->pp_cc_es[i] )
                 continue;
 
-            if( i_spu_id == es->pp_cc_es[i]->i_id )
+            if( i_spu_id == es->pp_cc_es[i]->i_id || i_spu2_id == es->pp_cc_es[i]->i_id )
             {
                 /* Force unselection of the CC */
-                input_SendEventEsSelect( p_input, SPU_ES, -1 );
+                input_SendEventEsSelect( p_input, SPU_ES, -1, 0);
             }
             EsOutDel( out, es->pp_cc_es[i] );
 
@@ -1708,7 +1716,7 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
         return;
 
     /* Mark it as unselected */
-    input_SendEventEsSelect( p_input, es->fmt.i_cat, -1 );
+    input_SendEventEsSelect( p_input, es->fmt.i_cat, -1, 0);
     if( EsFmtIsTeletext( &es->fmt ) )
         input_SendEventTeletextSelect( p_input, -1 );
 }
@@ -1722,10 +1730,13 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
  * \param b_force ...
  * \return nothing
  */
-static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
+static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord )
 {
     es_out_sys_t      *p_sys = out->p_sys;
-
+    if(i_ord < 0 || i_ord > 1)
+    {
+        return;
+    }
     int i_cat = es->fmt.i_cat;
 
     if( !p_sys->b_active ||
@@ -1737,7 +1748,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
     if( p_sys->i_mode == ES_OUT_MODE_ALL || b_force )
     {
         if( !EsIsSelected( es ) )
-            EsSelect( out, es );
+            EsSelect( out, es, i_ord );
     }
     else if( p_sys->i_mode == ES_OUT_MODE_PARTIAL )
     {
@@ -1753,7 +1764,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
                 if( atoi( prgm ) == es->p_pgrm->i_id || b_force )
                 {
                     if( !EsIsSelected( es ) )
-                        EsSelect( out, es );
+                        EsSelect( out, es, i_ord );
                     break;
                 }
             }
@@ -1817,7 +1828,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
             {
                 int es_idx = LanguageArrayIndex( p_sys->ppsz_sub_language,
                                      es->psz_language_code );
-                if( !p_sys->p_es_sub )
+                if( !p_sys->p_es_sub[i_ord] )
                 {
                     /* Select the language if it's in the list */
                     if( es_idx >= 0 ||
@@ -1833,12 +1844,12 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
                 {
                     int selected_es_idx =
                         LanguageArrayIndex( p_sys->ppsz_sub_language,
-                                            p_sys->p_es_sub->psz_language_code );
+                                            p_sys->p_es_sub[i_ord]->psz_language_code );
 
                     if( es_idx >= 0 &&
                         ( selected_es_idx < 0 || es_idx < selected_es_idx ||
                           ( es_idx == selected_es_idx &&
-                            p_sys->p_es_sub->fmt.i_priority < es->fmt.i_priority ) ) )
+                            p_sys->p_es_sub[i_ord]->fmt.i_priority < es->fmt.i_priority ) ) )
                         i_wanted = es->i_channel;
                 }
             }
@@ -1856,19 +1867,19 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
             {
                 /* If there is no user preference, select the default subtitle 
                  * or adapt by ES priority */
-                if( ( !p_sys->p_es_sub &&
+                if( ( !p_sys->p_es_sub[i_ord] &&
                       ( p_sys->i_default_sub_id >= 0 &&
                         es->i_id == p_sys->i_default_sub_id ) ) ||
-                    ( p_sys->p_es_sub && 
-                      p_sys->p_es_sub->fmt.i_priority < es->fmt.i_priority ) )
+                    ( p_sys->p_es_sub[i_ord] && 
+                      p_sys->p_es_sub[i_ord]->fmt.i_priority < es->fmt.i_priority ) )
                     i_wanted = es->i_channel;
-                else if( p_sys->p_es_sub &&
-                         p_sys->p_es_sub->fmt.i_priority >= es->fmt.i_priority )
-                    i_wanted = p_sys->p_es_sub->i_channel;
+                else if( p_sys->p_es_sub[i_ord] &&
+                         p_sys->p_es_sub[i_ord]->fmt.i_priority >= es->fmt.i_priority )
+                    i_wanted = p_sys->p_es_sub[i_ord]->i_channel;
             }
 
-            if( p_sys->i_sub_last >= 0 )
-                i_wanted  = p_sys->i_sub_last;
+            if( p_sys->i_sub_last[i_ord] >= 0 )
+                i_wanted  = p_sys->i_sub_last[i_ord];
 
             if( p_sys->i_sub_id >= 0 )
             {
@@ -1884,11 +1895,11 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         }
 
         if( i_wanted == es->i_channel && !EsIsSelected( es ) )
-            EsSelect( out, es );
+            EsSelect( out, es, i_ord );
     }
 
     /* FIXME TODO handle priority here */
-    if( EsIsSelected( es ) )
+    if( EsIsSelected( es ))
     {
         if( i_cat == AUDIO_ES )
         {
@@ -1904,13 +1915,13 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         else if( i_cat == SPU_ES )
         {
             if( p_sys->i_mode == ES_OUT_MODE_AUTO &&
-                p_sys->p_es_sub &&
-                p_sys->p_es_sub != es &&  /*that unselect other subs*/
-                EsIsSelected( p_sys->p_es_sub ) )
+                p_sys->p_es_sub[i_ord] &&
+                p_sys->p_es_sub[i_ord] != es &&  /*that unselect other subs*/
+                EsIsSelected( p_sys->p_es_sub[i_ord] ) )
             {
-                EsUnselect( out, p_sys->p_es_sub, false );
+                EsUnselect( out, p_sys->p_es_sub[i_ord], false );
             }
-            p_sys->p_es_sub = es;
+            p_sys->p_es_sub[i_ord] = es; /*every time use this, make sure previous sub is released*/
         }
         else if( i_cat == VIDEO_ES )
         {
@@ -2038,8 +2049,8 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         es->pb_cc_present[i] = true;
 
         /* Enable if user specified on command line */
-        if (p_sys->i_sub_last == i)
-            EsOutSelect(out, es->pp_cc_es[i], true);
+        if (p_sys->i_sub_last[0] == i)
+            EsOutSelect(out, es->pp_cc_es[i], true, 0);
     }
 
     vlc_mutex_unlock( &p_sys->lock );
@@ -2057,7 +2068,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
     int i;
 
     vlc_mutex_lock( &p_sys->lock );
-
+    int i_ord = EsIsSelected(es) - 1;
     /* We don't try to reselect */
     if( es->p_dec )
     {   /* FIXME: This might hold the ES output caller (i.e. the demux), and
@@ -2090,11 +2101,12 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
 
     /* */
     if( p_sys->p_es_audio == es || p_sys->p_es_video == es ||
-        p_sys->p_es_sub == es ) b_reselect = true;
+        p_sys->p_es_sub[0] == es || p_sys->p_es_sub[1] == es) b_reselect = true;
 
     if( p_sys->p_es_audio == es ) p_sys->p_es_audio = NULL;
     if( p_sys->p_es_video == es ) p_sys->p_es_video = NULL;
-    if( p_sys->p_es_sub   == es ) p_sys->p_es_sub   = NULL;
+    if( p_sys->p_es_sub[0]   == es ) p_sys->p_es_sub[0]   = NULL;
+    if( p_sys->p_es_sub[1]   == es ) p_sys->p_es_sub[1]   = NULL;
 
     switch( es->fmt.i_cat )
     {
@@ -2115,7 +2127,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
         for( i = 0; i < p_sys->i_es; i++ )
         {
             if( es->fmt.i_cat == p_sys->es[i]->fmt.i_cat )
-                EsOutSelect( out, p_sys->es[i], false );
+                EsOutSelect( out, p_sys->es[i], false, i_ord );
         }
     }
 
@@ -2147,10 +2159,11 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     {
         es_out_id_t *es = va_arg( args, es_out_id_t * );
         bool b = va_arg( args, int );
+        int i_ord = va_arg(args, int );
         if( b && !EsIsSelected( es ) )
         {
-            EsSelect( out, es );
-            return EsIsSelected( es ) ? VLC_SUCCESS : VLC_EGENERIC;
+            EsSelect( out, es, i_ord);
+            return EsIsSelected( es ) == i_ord + 1? VLC_SUCCESS : VLC_EGENERIC;
         }
         else if( !b && EsIsSelected( es ) )
         {
@@ -2209,7 +2222,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                             p_sys->es[i]->p_pgrm == p_sys->p_pgrm );
         }
         for( int i = 0; i < p_sys->i_es; i++ )
-            EsOutSelect( out, p_sys->es[i], false );
+            EsOutSelect( out, p_sys->es[i], false, 0 );
         if( i_mode == ES_OUT_MODE_END )
             EsOutTerminate( out );
         return VLC_SUCCESS;
@@ -2219,7 +2232,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     case ES_OUT_RESTART_ES:
     {
         es_out_id_t *es = va_arg( args, es_out_id_t * );
-        int ord = (int)va_arg(args, int);
+        int i_ord = (int)va_arg(args, int);
 
         int i_cat;
         if( es == NULL )
@@ -2241,12 +2254,12 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                 {
                     if( i_query == ES_OUT_RESTART_ES && p_sys->es[i]->p_dec )
                     {
-                        EsDestroyDecoder( out, p_sys->es[i] );
-                        EsCreateDecoder( out, p_sys->es[i] );
+                        int pre_ord = EsDestroyDecoder( out, p_sys->es[i] );
+                        EsCreateDecoder( out, p_sys->es[i],pre_ord );
                     }
                     else if( i_query == ES_OUT_SET_ES )
                     {
-                        EsOutSelect( out, es, true );
+                        EsOutSelect( out, es, true, i_ord );
                     }
                     break;
                 }
@@ -2261,8 +2274,8 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                         {
                             if( p_sys->es[i]->p_dec )
                             {
-                                EsDestroyDecoder( out, p_sys->es[i] );
-                                EsCreateDecoder( out, p_sys->es[i] );
+                                int pre_ord =  EsDestroyDecoder( out, p_sys->es[i] );
+                                EsCreateDecoder( out, p_sys->es[i],pre_ord);
                             }
                         }
                         else
@@ -2439,8 +2452,8 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
 
         if( es->p_dec )
         {
-            EsDestroyDecoder( out, es );
-            EsCreateDecoder( out, es );
+            int i_ord = EsDestroyDecoder( out, es );
+            EsCreateDecoder( out, es, i_ord );
         }
 
         return VLC_SUCCESS;
