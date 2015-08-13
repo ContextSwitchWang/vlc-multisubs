@@ -1802,14 +1802,24 @@ static bool Control( input_thread_t *p_input,
         case INPUT_CONTROL_SET_ES:
             /* No need to force update, es_out does it if needed */
             es_out_Control( p_input->p->p_es_out_display,
-                            ES_OUT_SET_ES_BY_ID, (int)val.i_int );
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 0);
+
+            demux_Control( p_input->p->input.p_demux, DEMUX_SET_ES, (int)val.i_int);
+            break;
+        case INPUT_CONTROL_SET_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 1);
 
             demux_Control( p_input->p->input.p_demux, DEMUX_SET_ES, (int)val.i_int );
             break;
 
         case INPUT_CONTROL_RESTART_ES:
             es_out_Control( p_input->p->p_es_out_display,
-                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int );
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 0);
+            break;
+        case INPUT_CONTROL_RESTART_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 1);
             break;
 
         case INPUT_CONTROL_SET_AUDIO_DELAY:
