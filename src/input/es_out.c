@@ -1659,7 +1659,7 @@ static void EsSelect( es_out_t *out, es_out_id_t *es, int i_ord )
                 return;
             }
         }
-
+        msg_Dbg( p_input, "Selecting es channel %d", es->i_channel );
         EsCreateDecoder( out, es, i_ord );
 
         if( es->p_dec == NULL || es->p_pgrm != p_sys->p_pgrm )
@@ -1747,7 +1747,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
 
     if( p_sys->i_mode == ES_OUT_MODE_ALL || b_force )
     {
-        if( !EsIsSelected( es ) )
+        if( !EsIsSelected( es ) )/*must be 0 unselected*/
             EsSelect( out, es, i_ord );
     }
     else if( p_sys->i_mode == ES_OUT_MODE_PARTIAL )
@@ -1774,7 +1774,8 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
     else if( p_sys->i_mode == ES_OUT_MODE_AUTO )
     {
         int i_wanted  = -1;
-
+         msg_Dbg(p_sys->p_input, "EsOutSelect auto ord %d channel %d", 
+                i_ord, es->i_channel);
         if( es->p_pgrm != p_sys->p_pgrm )
             return;
 
@@ -1888,6 +1889,8 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
                 else
                     return;
             }
+            msg_Dbg(p_sys->p_input, "EsOutSelect ord %d channel %d wanted %d", 
+                i_ord, es->i_channel, i_wanted );
         }
         else if( i_cat == VIDEO_ES )
         {
@@ -2152,7 +2155,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
 static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
 {
     es_out_sys_t *p_sys = out->p_sys;
-
+    
     switch( i_query )
     {
     case ES_OUT_SET_ES_STATE:
@@ -2245,20 +2248,23 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
             i_cat = SPU_ES;
         else
             i_cat = -1;
-
+        msg_Dbg(p_sys->p_input, "ES_OUT_SET_ES cat %d ord %d", i_cat, i_ord);
         for( int i = 0; i < p_sys->i_es; i++ )
-        {
+        {   
+            
             if( i_cat == -1 )
             {
                 if( es == p_sys->es[i] )
                 {
                     if( i_query == ES_OUT_RESTART_ES && p_sys->es[i]->p_dec )
                     {
-                        int pre_ord = EsDestroyDecoder( out, p_sys->es[i] );
+                        msg_Dbg(p_sys->p_input, "ES_OUT_RESTART_ES channel %d", es->i_channel);
+                        int pre_ord = EsDestroyDecoder( out, p_sys->es[i] );/*previous*/
                         EsCreateDecoder( out, p_sys->es[i],pre_ord );
                     }
                     else if( i_query == ES_OUT_SET_ES )
                     {
+                        msg_Dbg(p_sys->p_input, "ES_OUT_SET_ES channel %d", es->i_channel);
                         EsOutSelect( out, es, true, i_ord );
                     }
                     break;
@@ -2529,6 +2535,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
         const int i_id = (int)va_arg( args, int );
         const int i_ord = (int)va_arg(args, int );
         es_out_id_t *p_es = EsOutGetFromID( out, i_id );
+        msg_Dbg(p_sys->p_input, "ES_OUT_SET_ES_BY_ID %d", i_id);
         int i_new_query = 0;
 
         switch( i_query )
