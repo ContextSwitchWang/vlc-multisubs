@@ -72,8 +72,8 @@ static void DisplayVolume( intf_thread_t *, vout_thread_t *, float );
 static void DisplayRate ( vout_thread_t *, float );
 static float AdjustRateFine( vlc_object_t *, const int );
 static void ClearChannels  ( intf_thread_t *, vout_thread_t * );
-static void SubtitleTrack(input_thread_t*, vout_thread_t *, const char*, const char*, const char* );
-static void SubtitleToggle(input_thread_t*, vout_thread_t *, const char*, const char*, const char*); 
+static void SubtitleTrack(input_thread_t* , vout_thread_t* , const char*, const char*,const char*);
+static void SubtitleToggle(input_thread_t*, vout_thread_t*,  const char*, const char*, const char*);
 #define DisplayMessage(vout, ...) \
     do { \
         if (vout) \
@@ -91,6 +91,7 @@ vlc_module_begin ()
     set_description( N_("Hotkeys management interface") )
     set_capability( "interface", 0 )
     set_callbacks( Open, Close )
+    set_category( CAT_INTERFACE )
     set_category( CAT_INTERFACE )
     set_subcategory( SUBCAT_INTERFACE_HOTKEYS )
 
@@ -1186,7 +1187,7 @@ static void SubtitleTrack(input_thread_t* p_input, vout_thread_t * p_vout,
         int i_count, i;
         var_Get( p_input, spu, &val );
                                                                                  
-        var_Change( p_input, spu, VLC_VAR_GETCHOICES,
+        var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
                     &list, &list2 );
         i_count = list.p_list->i_count;
         if( i_count <= 1 )
@@ -1200,7 +1201,7 @@ static void SubtitleTrack(input_thread_t* p_input, vout_thread_t * p_vout,
         {
             if( val.i_int == list.p_list->p_values[i].i_int )
             {
-                return;
+                break;
             }
         }
         /* value of spu-es was not in choices list */
@@ -1232,7 +1233,7 @@ static void SubtitleToggle(input_thread_t* p_input, vout_thread_t * p_vout,
         i_old_id = var_GetInteger( p_input, spues );//id is always changing
         i_sel_id = var_GetInteger( p_input, spuchoice );
                                                                                           
-        var_Change( p_input, spues, VLC_VAR_GETCHOICES,
+        var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
                     &list, &list2 );
         i_count = list.p_list->i_count;
                                                                                           
@@ -1247,31 +1248,14 @@ static void SubtitleToggle(input_thread_t* p_input, vout_thread_t * p_vout,
         {
             if( i_sel_id == list.p_list->p_values[i_sel_index].i_int )
             {
-                return;
+                break;
             }
         }
         /* if there is nothing to toggle choose the first track */
         if( !i_sel_index ) {
             i_sel_index = 1;
             i_sel_id = list.p_list->p_values[1].i_int;
-            var_SetInteger( p_input, spuchoice, i_sel_id );
         }
-                                                                                          
-        i_new_index = 0;
-        if( i_old_id != i_sel_id )
-        {
-            if( i_sel_index >= i_count )
-            {
-                var_SetInteger( p_input, spuchoice, list.p_list->p_values[0].i_int );
-            }
-            else
-            {
-                i_new_index = i_sel_index;
-            }
-        }//set spu-es must trigger some thing
-        var_SetInteger( p_input, spues, list.p_list->p_values[i_new_index].i_int );
-        DisplayMessage( p_vout, _("%sSubtitle track: %s"), prompt,
-                        list2.p_list->p_values[i_new_index].psz_string);
-        var_FreeList( &list, &list2 );
-    }                                                                                     
+
+    }
 }
