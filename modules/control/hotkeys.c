@@ -111,7 +111,8 @@ static int Open( vlc_object_t *p_this )
     p_sys->p_last_vout = NULL;
     p_sys->subtitle_delaybookmarks.i_time_audio = 0;
     p_sys->subtitle_delaybookmarks.i_time_subtitle = 0;
-
+    /*p_libvlc is a common member, when key-action is changed, 
+    callback will happen, with old, new val, and  p_inf*/
     var_AddCallback( p_intf->p_libvlc, "key-action", ActionEvent, p_intf );
     return VLC_SUCCESS;
 }
@@ -603,13 +604,14 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
             {
                 vlc_value_t list, list2;
                 int i_count, i_sel_index, i_sel_id, i_old_id, i_new_index;
-                i_old_id = var_GetInteger( p_input, "spu-es" );
+                i_old_id = var_GetInteger( p_input, "spu-es" );//id is always changing
                 i_sel_id = var_GetInteger( p_input, "spu-choice" );
 
                 var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
                             &list, &list2 );
                 i_count = list.p_list->i_count;
-                if( i_count <= 1 )
+
+                if( i_count <= 1 )// o is disable, >=1 are real tracks
                 {
                     DisplayMessage( p_vout, _("Subtitle track: %s"),
                                     _("N/A") );
@@ -641,10 +643,10 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
                     {
                         i_new_index = i_sel_index;
                     }
-                }
+                }//set spu-es must trigger some thing
                 var_SetInteger( p_input, "spu-es", list.p_list->p_values[i_new_index].i_int );
                 DisplayMessage( p_vout, _("Subtitle track: %s"),
-                                list2.p_list->p_values[i_new_index].psz_string );
+                                list2.p_list->p_values[i_new_index].psz_string);
                 var_FreeList( &list, &list2 );
             }
             break;
