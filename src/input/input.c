@@ -2946,7 +2946,7 @@ static void input_SubtitleAdd( input_thread_t *p_input,
     }
     TAB_APPEND( p_input->p->i_slave, p_input->p->slave, sub );
 
-    if( !(i_flags & SUB_FORCED) )
+    if( !(i_flags & SUB_FORCED) )//one of them is false? in loading, the flag == SUB_FORCED==1, so we proceed 
         return;
 
     /* Select the ES */
