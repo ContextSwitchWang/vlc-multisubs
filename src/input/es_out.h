@@ -47,6 +47,8 @@ enum es_out_query_private_e
     /* Wrapper for some ES command to work with id */
     ES_OUT_SET_ES_BY_ID,
     ES_OUT_RESTART_ES_BY_ID,
+    ES_OUT_SET_ES2_BY_ID, //support for a 2nd ES simultaneously
+    ES_OUT_RESTART_ES2_BY_ID,
     ES_OUT_SET_ES_DEFAULT_BY_ID,
     ES_OUT_GET_ES_OBJECTS_BY_ID,                    /* arg1=int id, vlc_object_t **dec, vout_thread_t **, audio_output_t ** res=can fail*/
 
