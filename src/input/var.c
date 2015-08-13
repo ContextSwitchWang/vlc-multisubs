@@ -759,10 +759,7 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
         else if( !strcmp( psz_cmd, "video-es" ) )
             v.i_int = -VIDEO_ES;
         else if( !strcmp( psz_cmd, "spu-es" ) )
-            v.i_int = -SPU_ES;
-        else if( !strcmp( psz_cmd, "spu-es2" ) )
-            v.i_int = -SPU_ES;//not sure what the hack is
-
+            v.i_int = -SPU_ES; //not sure what the hack is
         else
             v.i_int = 0;
         if( v.i_int != 0 )//push it, so input thread will process it later
