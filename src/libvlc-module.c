@@ -1330,8 +1330,10 @@ static const char *const mouse_wheel_texts[] = {
 #define AUDIO_TRACK_KEY_TEXT N_("Cycle audio track")
 #define AUDIO_TRACK_KEY_LONGTEXT N_("Cycle through the available audio tracks(languages).")
 #define SUBTITLE_TRACK_KEY_TEXT N_("Cycle subtitle track")
+#define SUBTITLE_TRACK2_KEY_TEXT N_("Cycle 2nd subtitle track")
 #define SUBTITLE_TRACK_KEY_LONGTEXT N_("Cycle through the available subtitle tracks.")
 #define SUBTITLE_TOGGLE_KEY_TEXT N_("Toggle subtitles")
+#define SUBTITLE2_TOGGLE_KEY_TEXT N_("Toggle 2nd subtitles")
 #define SUBTITLE_TOGGLE_KEY_LONGTEXT N_("Toggle subtitle track visibility.")
 #define PROGRAM_SID_NEXT_KEY_TEXT N_("Cycle next program Service ID")
 #define PROGRAM_SID_NEXT_KEY_LONGTEXT N_("Cycle through the available next program Service IDs (SIDs).")
@@ -2459,6 +2461,11 @@ vlc_module_begin ()
              SUBTITLE_TRACK_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
     add_key( "key-subtitle-toggle", KEY_SUBTITLE_TOGGLE,
              SUBTITLE_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
+    add_key( "key-subtitle-track2", NULL,
+             SUBTITLE_TRACK2_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
+    add_key( "key-subtitle2-toggle", NULL,
+             SUBTITLE2_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
+
     add_key( "key-program-sid-next", KEY_PROGRAM_SID_NEXT,
              PROGRAM_SID_NEXT_KEY_TEXT, PROGRAM_SID_NEXT_KEY_LONGTEXT, false )
     add_key( "key-program-sid-prev", KEY_PROGRAM_SID_PREV,
