@@ -740,11 +740,11 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
     input_thread_t *p_input = (input_thread_t*)p_this;
     VLC_UNUSED(oldval); VLC_UNUSED(p_data);
 
-    if( newval.i_int < 0 )
+    if( newval.i_int < 0 )//if set to negative, only cat matters
     {
         vlc_value_t v;
         /* Hack */
-        if( !strcmp( psz_cmd, "audio-es" ) )
+        if( !strcmp( psz_cmd, "audio-es" ) )//it's not cmd, variable name actually
             v.i_int = -AUDIO_ES;
         else if( !strcmp( psz_cmd, "video-es" ) )
             v.i_int = -VIDEO_ES;
@@ -752,7 +752,7 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
             v.i_int = -SPU_ES;
         else
             v.i_int = 0;
-        if( v.i_int != 0 )
+        if( v.i_int != 0 )//push it, so input thread will process it later
             input_ControlPush( p_input, INPUT_CONTROL_SET_ES, &v );
     }
     else
@@ -760,7 +760,7 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
         input_ControlPush( p_input, INPUT_CONTROL_SET_ES, &newval );
     }
 
-    return VLC_SUCCESS;
+    return VLC_SUCCESS;//the val will go to es_out_Control later
 }
 
 static int EsDelayCallback ( vlc_object_t *p_this, char const *psz_cmd,
