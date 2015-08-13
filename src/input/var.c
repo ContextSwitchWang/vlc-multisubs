@@ -738,7 +738,7 @@ static int ESCallback( vlc_object_t *p_this, char const *psz_cmd,
                        vlc_value_t oldval, vlc_value_t newval, void *p_data )
 {
     input_thread_t *p_input = (input_thread_t*)p_this;
-    VLC_UNUSED(oldval); VLC_UNUSED(p_data);
+    VLC_UNUSED(oldval); VLC_UNUSED(p_data);//p_data is null when added
 
     if( newval.i_int < 0 )//if set to negative, only cat matters
     {
