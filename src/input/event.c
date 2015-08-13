@@ -283,10 +283,15 @@ void input_SendEventEsDel( input_thread_t *p_input, int i_cat, int i_id )
         VarListDel( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
 }
 /* i_id == -1 will unselect */
-void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id )
+void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id, int i_ord )
 {
     if( i_cat != UNKNOWN_ES )
-        VarListSelect( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
+    {   
+        if(i_ord == 0)
+            VarListSelect( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
+        else if(i_ord == 1 && i_cat == SPU_ES)
+             VarListSelect( p_input, "spu-es2", INPUT_EVENT_ES, i_id );
+    }
 }
 
 void input_SendEventTeletextAdd( input_thread_t *p_input,
