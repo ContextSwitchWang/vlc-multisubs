@@ -1252,10 +1252,28 @@ static void SubtitleToggle(input_thread_t* p_input, vout_thread_t * p_vout,
             }
         }
         /* if there is nothing to toggle choose the first track */
-        if( !i_sel_index ) {
+        if( !i_sel_index ) 
+        {
             i_sel_index = 1;
             i_sel_id = list.p_list->p_values[1].i_int;
+            var_SetInteger(p_input, spuchoice, i_sel_id);
         }
 
+        i_new_index = 0;
+        if( i_old_id != i_sel_id )
+        {
+            if( i_sel_index >= i_count )
+            {
+                 var_SetInteger( p_input, spuchoice, list.p_list->p_values[0].i_int );
+            }
+            else
+            {
+                 i_new_index = i_sel_index;
+            }
+        }
+        var_SetInteger( p_input, spues, list.p_list->p_values[i_new_index].i_int );
+        DisplayMessage( p_vout, _("%sSubtitle track: %s"), prompt,
+                                list2.p_list->p_values[i_new_index].psz_string );
+        var_FreeList( &list, &list2 );
     }
 }

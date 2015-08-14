@@ -2972,8 +2972,8 @@ static void input_SubtitleAdd( input_thread_t *p_input,
     {
         const int i_id = list.p_list->p_values[count.i_int].i_int;
 
-        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id );
-        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id,0 );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id, 0 );
     }
     var_FreeList( &list, NULL );
 }
