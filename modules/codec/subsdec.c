@@ -489,12 +489,11 @@ static int OpenDecoder( vlc_object_t *p_this )
                      vlc_strerror_c(errno));
     }
     free (var);
+    p_sys->i_align = var_InheritInteger( p_dec, "subsdec-align" );
     if(p_dec->fmt_in.subs.i_ord == 1)
-        p_sys->i_align = SUBPICTURE_ALIGN_TOP;
-    else //if(p_dec->fmt_int.subs.i_ord == 0)
-        p_sys->i_align = SUBPICTURE_ALIGN_BOTTOM;
-    // p_sys->i_align = var_InheritInteger( p_dec, "subsdec-align" );
-    msg_Dbg (p_dec, "subsdec-algin: %d", p_sys->i_align);
+         p_sys->i_align |= SUBPICTURE_ALIGN_TOP;
+    else
+         p_sys->i_align |= SUBPICTURE_ALIGN_BOTTOM;
 
 
     return VLC_SUCCESS;
@@ -640,12 +639,13 @@ static subpicture_t *ParseText( decoder_t *p_dec, block_t *p_block )
     p_spu->b_absolute = false;
 
     subpicture_updater_sys_t *p_spu_sys = p_spu->updater.p_sys;
-
-    //p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM | p_sys->i_align;
-      p_spu_sys->align = p_sys->i_align;
-
+    int i_align = SUBPICTURE_ALIGN_BOTTOM;
+    if(p_dec->fmt_in.subs.i_ord == 1)
+        i_align = SUBPICTURE_ALIGN_TOP;
+    p_spu_sys->align = i_align | p_sys->i_align;
     p_spu_sys->p_segments = ParseSubtitles( &p_spu_sys->align, psz_subtitle );
 
+    msg_Dbg (p_dec, "subsdec-algin: %d", p_spu_sys->align);
     //FIXME: Remove the variable?
     //if( var_InheritBool( p_dec, "subsdec-formatted" ) )
 
