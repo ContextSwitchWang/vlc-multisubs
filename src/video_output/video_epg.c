@@ -124,7 +124,7 @@ static subpicture_region_t * vout_OSDEpgText(const char *text,
     region->i_y      = y;
 
     /* Set text style */
-    text_style_t *p_style = text_style_New();
+    text_style_t *p_style = text_style_Create( STYLE_NO_DEFAULTS );
     if ( unlikely( !p_style ) )
     {
         text_segment_Delete( region->p_text );
@@ -133,9 +133,10 @@ static subpicture_region_t * vout_OSDEpgText(const char *text,
     }
     region->p_text->style = p_style;
     if (p_style) {
-        p_style->i_font_size  = size;
+        p_style->f_font_relsize  = __MIN( size, 0 );
         p_style->i_font_color = color;
         p_style->i_font_alpha = 0;
+        p_style->i_features |= STYLE_HAS_FONT_ALPHA | STYLE_HAS_FONT_COLOR;
     }
 
     return region;
