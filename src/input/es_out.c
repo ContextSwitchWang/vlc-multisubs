@@ -201,6 +201,8 @@ static int LanguageArrayIndex( char **ppsz_langs, const char *psz_lang );
 
 static char *EsOutProgramGetMetaName( es_out_pgrm_t *p_pgrm );
 
+
+
 static const vlc_fourcc_t EsOutFourccClosedCaptions[4] = {
     VLC_FOURCC('c', 'c', '1', ' '),
     VLC_FOURCC('c', 'c', '2', ' '),
@@ -2108,6 +2110,7 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
     {
         block_Release( p_block );
         vlc_mutex_unlock( &p_sys->lock );
+        msg_Dbg( p_input, "returning from EsOutSend" );
         return VLC_SUCCESS;
     }
 
@@ -2134,6 +2137,8 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
     { 
         if( es->p_dec_record[j] )
         {
+            msg_Dbg(p_input, "decoding Record..");
+
             block_t *p_dup = block_Duplicate( p_block );
             if( p_dup )
                 input_DecoderDecode( es->p_dec_record[j], p_dup,
@@ -2148,21 +2153,29 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
             if( p_dup )
                 input_DecoderDecode( es->p_dec[0], p_dup,
                                  p_input->p->b_out_pace_control );
-            input_DecoderDecode( es->p_dec[1], p_dup,
+            input_DecoderDecode( es->p_dec[1], p_block,
                                  p_input->p->b_out_pace_control );
-
+            msg_Dbg(p_input, "EsOutSend decoded dup");
     }
     else if (es->p_dec[0])
-        input_DecoderDecode( es->p_dec[0], p_block,
+    {
+         input_DecoderDecode( es->p_dec[0], p_block,
                          p_input->p->b_out_pace_control );
+    }
     else if (es->p_dec[1])
+    {
+         msg_Dbg(p_input, "decoding a 2nd..");
+
         input_DecoderDecode( es->p_dec[1], p_block,
                          p_input->p->b_out_pace_control );
+        msg_Dbg(p_input, "decoded a 2nd");
+    }
         
 
     es_format_t fmt_dsc;
     vlc_meta_t  *p_meta_dsc;
     for(int j = 0; j < 2; j++)
+    {
         if(es->p_dec[j] && input_DecoderHasFormatChanged( es->p_dec[j], &fmt_dsc, &p_meta_dsc ) )
         {
             EsOutUpdateInfo( out, es, &fmt_dsc, p_meta_dsc );
@@ -2171,36 +2184,43 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
             if( p_meta_dsc )
                 vlc_meta_Delete( p_meta_dsc );
         }
-
-    /* Check CC status */
-    bool pb_cc[4];
-
-    input_DecoderIsCcPresent( es->p_dec[0], pb_cc );
-    for( int i = 0; i < 4; i++ )
-    {
-        es_format_t fmt;
-
-        if(  es->pb_cc_present[i] || !pb_cc[i] )
-            continue;
-        msg_Dbg( p_input, "Adding CC track %d for es[%d]", 1+i, es->i_id );
-
-        es_format_Init( &fmt, SPU_ES, EsOutFourccClosedCaptions[i] );
-        fmt.i_group = es->fmt.i_group;
-        if( asprintf( &fmt.psz_description,
-                      _("Closed captions %u"), 1 + i ) == -1 )
-            fmt.psz_description = NULL;
-        es->pp_cc_es[i] = EsOutAdd( out, &fmt );
-        es->pp_cc_es[i]->p_master = es;
-        es_format_Clean( &fmt );
-
-        /* */
-        es->pb_cc_present[i] = true;
-
-        /* Enable if user specified on command line */
-        if (p_sys->i_sub_last[0] == i)
-            EsOutSelect(out, es->pp_cc_es[i], true, 0);
     }
+    if(es->fmt.i_cat == SPU_ES)
+        msg_Dbg(p_input, "status updated");
 
+    if(es->p_dec[0])
+    {   
+        
+        /* Check CC status */
+        bool pb_cc[4];
+        input_DecoderIsCcPresent( es->p_dec[0], pb_cc );
+        for( int i = 0; i < 4; i++ )
+        {
+             es_format_t fmt;
+
+             if(  es->pb_cc_present[i] || !pb_cc[i] )
+                 continue;
+             msg_Dbg( p_input, "Adding CC track %d for es[%d]", 1+i, es->i_id );
+
+             es_format_Init( &fmt, SPU_ES, EsOutFourccClosedCaptions[i] );
+             fmt.i_group = es->fmt.i_group;
+             if( asprintf( &fmt.psz_description,
+                           _("Closed captions %u"), 1 + i ) == -1 )
+                 fmt.psz_description = NULL;
+             es->pp_cc_es[i] = EsOutAdd( out, &fmt );
+             es->pp_cc_es[i]->p_master = es;
+             es_format_Clean( &fmt );
+
+             /* */
+             es->pb_cc_present[i] = true;
+
+             /* Enable if user specified on command line */
+            if (p_sys->i_sub_last[0] == i)
+                EsOutSelect(out, es->pp_cc_es[i], true, 0);
+        }
+    }
+    if(es->fmt.i_cat == SPU_ES)
+        msg_Dbg(p_input, "end of EsOutSend");
     vlc_mutex_unlock( &p_sys->lock );
 
     return VLC_SUCCESS;
@@ -2418,6 +2438,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                     {
                         msg_Dbg(p_sys->p_input, "ES_OUT_SET_ES channel %d", es->i_channel);
                         EsOutSelect( out, es, true, i_ord );
+                        msg_Dbg(p_sys->p_input, "returned from EsOutSelect %d", es->i_channel);
                     }
                     break;
                 }
@@ -2456,6 +2477,8 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                 }
             }
         }
+        msg_Dbg(p_sys->p_input, "will return success");
+
         return VLC_SUCCESS;
     }
 
