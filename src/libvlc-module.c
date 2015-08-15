@@ -2288,7 +2288,9 @@ vlc_module_begin ()
 
 #   define KEY_AUDIO_TRACK        "b"
 #   define KEY_SUBTITLE_TRACK     "v"
-#   define KEY_SUBTITLE_TOGGLE    "Shift+v"
+#   define KEY_SUBTITLE_TOGGLE    NULL
+#   define KEY_SUBTITLE_TRACK2     "Shift+v"
+#   define KEY_SUBTITLE_TOGGLE2   NULL
 #   define KEY_PROGRAM_SID_NEXT   "x"
 #   define KEY_PROGRAM_SID_PREV   "Shift+x"
 #   define KEY_ASPECT_RATIO       "a"
@@ -2461,9 +2463,9 @@ vlc_module_begin ()
              SUBTITLE_TRACK_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
     add_key( "key-subtitle-toggle", KEY_SUBTITLE_TOGGLE,
              SUBTITLE_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
-    add_key( "key-subtitle-track2", NULL,
+    add_key( "key-subtitle-track2", KEY_SUBTITLE_TRACK2,
              SUBTITLE_TRACK2_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
-    add_key( "key-subtitle2-toggle", NULL,
+    add_key( "key-subtitle2-toggle", KEY_SUBTITLE_TOGGLE2,
              SUBTITLE2_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
 
     add_key( "key-program-sid-next", KEY_PROGRAM_SID_NEXT,
