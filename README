@@ -1,3 +1,9 @@
+VLC Multi Subs
+==============================
+This is a fork of vlc, which allow vlc to display multiple subtitles at the 
+same time.
+See http://repo.or.cz/w/vlc/multisubs.git.
+
 README for the VLC media player
 ===============================
 
