@@ -1700,6 +1700,7 @@ static void EsSelect( es_out_t *out, es_out_id_t *es, int i_ord )
             }
         }
         else if( es->fmt.i_cat == AUDIO_ES )
+
         {
             if( !var_GetBool( p_input, b_sout ? "sout-audio" : "audio" ) )
             {
@@ -2020,7 +2021,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
     /* FIXME TODO handle priority here */
     if( EsIsSelected( es ) & (1 << i_ord))
     {
-        msg_Dbg(p_sys->p_input, "channel %d selected unselect...", es->i_channel);
+        msg_Dbg(p_sys->p_input, "channel %d selected unselecting...", es->i_channel);
         if( i_cat == AUDIO_ES )
         {
             if( p_sys->i_mode == ES_OUT_MODE_AUTO &&
@@ -2053,6 +2054,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
             p_sys->p_es_video = es;
         }
     }
+    msg_Dbg(p_sys->p_input, "End of EsOutSelect");
 }
 
 /**
@@ -2249,6 +2251,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
     /* */
     if( p_sys->p_es_audio == es || p_sys->p_es_video == es ||
         p_sys->p_es_sub[0] == es || p_sys->p_es_sub[1] == es) b_reselect = true;
+
 
     if( p_sys->p_es_audio == es ) p_sys->p_es_audio = NULL;
     if( p_sys->p_es_video == es ) p_sys->p_es_video = NULL;
