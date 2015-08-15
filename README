@@ -2,6 +2,8 @@ VLC Multi Subs
 ==============================
 This is a fork of vlc, which allow vlc to display multiple subtitles at the 
 same time.
+Even Potplayer has added a 2nd subtitle option in the new version. 
+But when I'm on linux, it's not available. So I decided to code it myself. 
 See http://repo.or.cz/w/vlc/multisubs.git.
 
 README for the VLC media player
