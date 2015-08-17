@@ -89,7 +89,7 @@ struct es_out_id_t
     es_format_t fmt;
     char        *psz_language;
     char        *psz_language_code;
-
+    /*this is to allow a 2nd sub, you may change 2 to 3 if you want*/
     decoder_t   *p_dec[2];
     decoder_t   *p_dec_record[2];
 
@@ -939,7 +939,7 @@ static void EsOutESVarUpdateGeneric( es_out_t *out, int i_id,
 
         /* First one, we need to add the "Disable" choice */
         val2.i_int = -1; text.psz_string = _("Disable");
-        var_Change( p_input, psz_var, VLC_VAR_ADDCHOICE, &val2, &text );//that all subtracks appear in intf
+        var_Change( p_input, psz_var, VLC_VAR_ADDCHOICE, &val2, &text );
         val.i_int++;
     }
 
@@ -1036,9 +1036,10 @@ static void EsOutProgramSelect( es_out_t *out, es_out_pgrm_t *p_pgrm )
     input_SendEventProgramSelect( p_input, p_pgrm->i_id );
 
     /* Update "es-*" */
+    /*-1 will clear it*/
     input_SendEventEsDel( p_input, AUDIO_ES, -1 );
     input_SendEventEsDel( p_input, VIDEO_ES, -1 );
-    input_SendEventEsDel( p_input, SPU_ES, -1 );//-1 will clear it
+    input_SendEventEsDel( p_input, SPU_ES, -1 );
     input_SendEventTeletextDel( p_input, -1 );
     input_SendEventProgramScrambled( p_input, p_pgrm->i_id, p_pgrm->b_scrambled );
 

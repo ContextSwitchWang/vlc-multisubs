@@ -8,6 +8,7 @@ typedef struct
 } subpicture_updater_sys_option_t;
 
 struct subpicture_updater_sys_t {
+    /*no position info here*/
     text_segment_t *p_segments;
 
     int  align;
@@ -28,6 +29,8 @@ struct subpicture_updater_sys_t {
     int16_t i_alpha;
     int16_t i_drop_shadow;
     int16_t i_drop_shadow_alpha;
+    /*for debug*/
+    decoder_t *p_decoder;
 };
 
 static int SubpictureTextValidate(subpicture_t *subpic,
@@ -95,6 +98,9 @@ static void SubpictureTextUpdate(subpicture_t *subpic,
             r->i_y += margin_v + fmt_dst->i_y_offset;
         else if (r->i_align & SUBPICTURE_ALIGN_BOTTOM )
             r->i_y += margin_v + fmt_dst->i_height - (fmt_dst->i_visible_height + fmt_dst->i_y_offset);
+        msg_Dbg (sys->p_decoder, "not fixed visible width %d height %d x %d y %d",
+                    fmt_dst->i_visible_width , fmt_dst->i_visible_height, r->i_x, r->i_y);
+
     } else {
         /* FIXME it doesn't adapt on crop settings changes */
         r->i_x = sys->x * fmt_dst->i_width  / sys->fixed_width;
@@ -157,6 +163,7 @@ static inline subpicture_t *decoder_NewSubpictureText(decoder_t *decoder)
         .pf_destroy  = SubpictureTextDestroy,
         .p_sys       = sys,
     };
+    sys->p_decoder = decoder;
     subpicture_t *subpic = decoder_NewSubpicture(decoder, &updater);
     if (!subpic)
         free(sys);

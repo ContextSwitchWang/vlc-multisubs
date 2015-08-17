@@ -639,16 +639,21 @@ static subpicture_t *ParseText( decoder_t *p_dec, block_t *p_block )
     p_spu->b_absolute = false;
 
     subpicture_updater_sys_t *p_spu_sys = p_spu->updater.p_sys;
+    /**/
     int i_align = SUBPICTURE_ALIGN_BOTTOM;
     if(p_dec->fmt_in.subs.i_ord == 1)
         i_align = SUBPICTURE_ALIGN_TOP;
     p_spu_sys->align = i_align | p_sys->i_align;
     p_spu_sys->p_segments = ParseSubtitles( &p_spu_sys->align, psz_subtitle );
 
-    msg_Dbg (p_dec, "subsdec-algin: %d", p_spu_sys->align);
+    msg_Dbg (p_dec, "subsdec-algin: %d is absolute %d", p_spu_sys->align, p_spu->b_absolute);
+    msg_Dbg (p_dec, "original picture width %d height %d",  p_spu->i_original_picture_width, p_spu->i_original_picture_height );
+    if(p_spu->p_region)
+    {
+        msg_Dbg (p_dec, "region x %d y %d",  p_spu->p_region->i_x,  p_spu->p_region->i_y);
+    }
     //FIXME: Remove the variable?
     //if( var_InheritBool( p_dec, "subsdec-formatted" ) )
-
     return p_spu;
 }
 
