@@ -98,13 +98,17 @@ static void SubpictureTextUpdate(subpicture_t *subpic,
             r->i_y += margin_v + fmt_dst->i_y_offset;
         else if (r->i_align & SUBPICTURE_ALIGN_BOTTOM )
             r->i_y += margin_v + fmt_dst->i_height - (fmt_dst->i_visible_height + fmt_dst->i_y_offset);
-        msg_Dbg (sys->p_decoder, "not fixed visible width %d height %d x %d y %d",
-                    fmt_dst->i_visible_width , fmt_dst->i_visible_height, r->i_x, r->i_y);
+        msg_Dbg (sys->p_decoder, "not fixed visible width %d height %d  width %d height %d x %d y %d",
+                    fmt_dst->i_visible_width , fmt_dst->i_visible_height, 
+                    fmt_dst->i_width, fmt_dst->i_height, r->i_x, r->i_y);
 
     } else {
         /* FIXME it doesn't adapt on crop settings changes */
         r->i_x = sys->x * fmt_dst->i_width  / sys->fixed_width;
         r->i_y = sys->y * fmt_dst->i_height / sys->fixed_height;
+        msg_Dbg (sys->p_decoder, "fixed visible width %d height %d x %d y %d",
+                    fmt_dst->i_visible_width , fmt_dst->i_visible_height, r->i_x, r->i_y);
+
     }
 
     if (sys->i_font_height_percent || sys->i_alpha ||
