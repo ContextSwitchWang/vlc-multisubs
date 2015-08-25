@@ -53,6 +53,8 @@
 /* FIXME we should find a better way than including that */
 #include "../text/iso-639_def.h"
 
+/*max number of times a sub can be simultaneously displayed*/
+#define MAX_SUBS 101
 /*****************************************************************************
  * Local prototypes
  *****************************************************************************/
@@ -1839,7 +1841,19 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update, int i_ord
     if( EsFmtIsTeletext( &es->fmt ) )
         input_SendEventTeletextSelect( p_input, -1 );
 }
+/*
+now, we want to write a set of functions to deal with the creation and deletion
+of decoders, this seems the right place.
+*/
 
+/*destroy all decoders of a certain id, and create them*/
+static void EsRestartAllDecoder(es_out_t* out, es_out_id_t *es)
+{
+    int i_ret = EsIsSelected( es);
+    EsDestroyDecoderPassByBits( out, es, i_ret);
+    EsCreateDecoderPassByBits( out, es, i_ret);
+
+}
 /**
  * Select an ES given the current mode
  * XXX: you need to take a the lock before (stream.stream_lock)
@@ -2330,7 +2344,10 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
     {
         es_out_id_t *es = va_arg( args, es_out_id_t * );
         bool b = va_arg( args, int );
-        int i_ord = va_arg(args, int ) == 1? 1:0;/*user should be aware of this*/     
+        int i_ord = va_arg(args, int );
+        /*user should be aware of this*/
+        if (i_ord >= MAX_SUBS )
+             i_ord = 0;
         if( b && !(EsIsSelected( es ) & (1 << i_ord) ))
         {
             EsSelect( out, es, i_ord);
@@ -2431,9 +2448,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                     {   
                         /*alway restart 2nd sub together*/
                         msg_Dbg(p_sys->p_input, "ES_OUT_RESTART_ES channel %d", es->i_channel);
-                        int i_ret = EsIsSelected( p_sys->es[i]);
-                        EsDestroyDecoderPassByBits( out, p_sys->es[i], i_ret);
-                        EsCreateDecoderPassByBits( out, p_sys->es[i], i_ret);
+                        EsRestartAllDecoder(out, p_sys->es[i]);
                     }
                     else if( i_query == ES_OUT_SET_ES )
                     {
@@ -2445,35 +2460,27 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
                 }
             }
             else
-            {   /*if user pass a categary as a negative number, the sub should be disabled*/
+            {
                 if( i_cat == UNKNOWN_ES || p_sys->es[i]->fmt.i_cat == i_cat )
                 {
-                    /*we want to disable a sub now*/
-                    int i_ret = EsIsSelected( p_sys->es[i] );
-                    msg_Dbg(p_sys->p_input, "Disable instruction received channel %d for ord %d, ret %d, tell %d",
-                            p_sys->es[i]->i_channel,  i_ord, i_ret, i_ret & (1 << i_ord));
-
-                    if(i_ret & (1 << i_ord))
+                    /*we want to disable a sub or audio or video now*/
+                    msg_Dbg(p_sys->p_input, "Disable instruction received channel %d for ord %d",
+                            p_sys->es[i]->i_channel,  i_ord);
+                    if( i_query == ES_OUT_RESTART_ES )
                     {
-                        msg_Dbg(p_sys->p_input, "is selected originally channel %d", p_sys->es[i]->i_channel);
-                        if( i_query == ES_OUT_RESTART_ES )
-                        {
-                            EsDestroyDecoderPassByBits( out, p_sys->es[i], i_ret);
-                            EsCreateDecoderPassByBits( out, p_sys->es[i], i_ret);
-                        }
-                        else
-                        {
-                            msg_Dbg(p_sys->p_input, "disabling channel %d", p_sys->es[i]->i_channel);
-                            EsUnselect( out, p_sys->es[i],
-                                        p_sys->es[i]->p_pgrm == p_sys->p_pgrm, i_ord );
-                            p_sys->p_es_sub[i_ord] = NULL;
-                        }
+                        /* the function will check if they are selected or something*/
+                        EsRestartAllDecoder(out, p_sys->es[i]);
                     }
                     else
                     {
-                    msg_Dbg(p_sys->p_input, "This track is not selected for ord %d, ret: %d",
-                            i_ord, i_ret);
-                    
+                        if( p_sys->p_es_sub[i_ord] == p_sys->es[i] )
+                        {
+                            msg_Dbg(p_sys->p_input, "disabling channel %d", p_sys->es[i]->i_channel);
+                            /* the function will check one more time if decoder exists */
+                            EsUnselect( out, p_sys->es[i],
+                                            p_sys->es[i]->p_pgrm == p_sys->p_pgrm, i_ord );
+                            p_sys->p_es_sub[i_ord] = NULL;
+                        }
                     }
                 }
             }
@@ -2642,9 +2649,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
 
         es_format_Clean( &es->fmt );
         es_format_Copy( &es->fmt, p_fmt );
-        int i_ret = EsIsSelected(es);
-        EsDestroyDecoderPassByBits( out, es, i_ret);
-        EsCreateDecoderPassByBits( out, es, i_ret );
+        EsRestartAllDecoder(out, es);
         return VLC_SUCCESS;
     }
 
