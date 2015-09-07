@@ -60,6 +60,13 @@
  *****************************************************************************/
 typedef struct
 {
+    decoder_t   *p_dec;
+    decoder_t   *p_dec_record;
+    dec_list_t  *next;
+} dec_list_t;
+
+typedef struct
+{
     /* Program ID */
     int i_id;
 
@@ -91,9 +98,8 @@ struct es_out_id_t
     es_format_t fmt;
     char        *psz_language;
     char        *psz_language_code;
-    /*this is to allow a 2nd sub, you may change 2 to 3 if you want*/
-    decoder_t   *p_dec[2];
-    decoder_t   *p_dec_record[2];
+    /* A list of Decoders */
+    dec_list_t; 
 
     /* Fields for Video with CC */
     bool  pb_cc_present[4];
