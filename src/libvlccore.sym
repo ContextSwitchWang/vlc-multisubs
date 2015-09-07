@@ -403,6 +403,8 @@ stream_MemoryNew
 stream_Peek
 stream_Read
 stream_ReadLine
+stream_Seek
+stream_Tell
 stream_UrlNew
 stream_vaControl
 stream_ReadDir
@@ -450,6 +452,7 @@ vlc_mkdir
 vlc_mkstemp
 vlc_open
 vlc_openat
+vlc_memfd
 vlc_opendir
 vlc_readdir
 vlc_scandir
@@ -561,6 +564,8 @@ vlc_interrupt_destroy
 vlc_interrupt_set
 vlc_interrupt_raise
 vlc_interrupt_kill
+vlc_interrupt_forward_start
+vlc_interrupt_forward_stop
 vlc_killed
 vlc_join
 vlc_list_children
@@ -671,8 +676,10 @@ vout_display_PlacePicture
 vout_display_SendMouseMovedDisplayCoordinates
 xml_Create
 text_style_Copy
+text_style_Create
 text_style_Delete
 text_style_Duplicate
+text_style_Merge
 text_style_New
 xml_Delete
 xml_ReaderCreate

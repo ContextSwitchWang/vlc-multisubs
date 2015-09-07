@@ -110,6 +110,7 @@ struct access_sys_t
 {
     /* file sizes of all parts */
     size_array_t file_sizes;
+    uint64_t offset;
     uint64_t size; /* total size */
 
     /* index and fd of current open file */
@@ -121,6 +122,7 @@ struct access_sys_t
 
     /* cut marks */
     input_title_t *p_marks;
+    uint64_t *offsets;
     unsigned cur_seekpoint;
     float fps;
 
@@ -219,6 +221,8 @@ static void Close( vlc_object_t * p_this )
     if( p_sys->p_meta )
         vlc_meta_Delete( p_sys->p_meta );
 
+    size_t count = p_sys->p_marks->i_seekpoint;
+    TAB_CLEAN( count, p_sys->offsets );
     vlc_input_title_Delete( p_sys->p_marks );
     free( p_sys );
 }
@@ -317,7 +321,7 @@ static int Control( access_t *p_access, int i_query, va_list args )
 
         case ACCESS_SET_SEEKPOINT:
             i = va_arg( args, int );
-            return Seek( p_access, p_sys->p_marks->seekpoint[i]->i_byte_offset );
+            return Seek( p_access, p_sys->offsets[i] );
 
         case ACCESS_GET_META:
             if( !p_sys->p_meta )
@@ -351,7 +355,7 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     if( i_ret > 0 )
     {
         /* success */
-        p_access->info.i_pos += i_ret;
+        p_sys->offset += i_ret;
         UpdateFileSize( p_access );
         FindSeekpoint( p_access );
         return i_ret;
@@ -392,7 +396,7 @@ static int Seek( access_t *p_access, uint64_t i_pos )
     /* might happen if called by ACCESS_SET_SEEKPOINT */
     i_pos = __MIN( i_pos, p_sys->size );
 
-    p_access->info.i_pos = i_pos;
+    p_sys->offset = i_pos;
     p_access->info.b_eof = false;
 
     /* find correct chapter */
@@ -424,8 +428,7 @@ static void FindSeekpoint( access_t *p_access )
         return;
 
     int new_seekpoint = p_sys->cur_seekpoint;
-    if( p_access->info.i_pos < (uint64_t)p_sys->p_marks->
-        seekpoint[p_sys->cur_seekpoint]->i_byte_offset )
+    if( p_sys->offset < p_sys->offsets[p_sys->cur_seekpoint] )
     {
         /* i_pos moved backwards, start fresh */
         new_seekpoint = 0;
@@ -433,8 +436,7 @@ static void FindSeekpoint( access_t *p_access )
 
     /* only need to check the following seekpoints */
     while( new_seekpoint + 1 < p_sys->p_marks->i_seekpoint &&
-        p_access->info.i_pos >= (uint64_t)p_sys->p_marks->
-        seekpoint[new_seekpoint + 1]->i_byte_offset )
+        p_sys->offset >= p_sys->offsets[new_seekpoint + 1] )
     {
         new_seekpoint++;
     }
@@ -579,7 +581,7 @@ static void UpdateFileSize( access_t *p_access )
     access_sys_t *p_sys = p_access->p_sys;
     struct stat st;
 
-    if( p_sys->size >= p_access->info.i_pos )
+    if( p_sys->size >= p_sys->offset )
         return;
 
     /* TODO: not sure if this can happen or what to do in this case */
@@ -817,7 +819,9 @@ static void ImportMarks( access_t *p_access )
     }
     p_marks->psz_name = strdup( _("VDR Cut Marks") );
     p_marks->i_length = i_frame_count * (int64_t)( CLOCK_FREQ / p_sys->fps );
-    p_marks->i_size = p_sys->size;
+
+    uint64_t *offsetv = NULL;
+    size_t offsetc = 0;
 
     /* offset for chapter positions */
     int i_chapter_offset = p_sys->fps / 1000 *
@@ -862,31 +866,38 @@ static void ImportMarks( access_t *p_access )
         if( !sp )
             continue;
         sp->i_time_offset = i_frame * (int64_t)( CLOCK_FREQ / p_sys->fps );
-        sp->i_byte_offset = i_offset;
-        for( int i = 0; i + 1 < i_file_number; ++i )
-            sp->i_byte_offset += FILE_SIZE( i );
         sp->psz_name = strdup( line );
 
         TAB_APPEND( p_marks->i_seekpoint, p_marks->seekpoint, sp );
+        TAB_APPEND( offsetc, offsetv, i_offset );
+
+        for( int i = 0; i + 1 < i_file_number; ++i )
+            offsetv[offsetc - 1] += FILE_SIZE( i );
     }
 
     /* add a chapter at the beginning if missing */
-    if( p_marks->i_seekpoint > 0 && p_marks->seekpoint[0]->i_byte_offset > 0 )
+    if( p_marks->i_seekpoint > 0 && offsetv[0] > 0 )
     {
         seekpoint_t *sp = vlc_seekpoint_New();
         if( sp )
         {
-            sp->i_byte_offset = 0;
             sp->i_time_offset = 0;
             sp->psz_name = strdup( _("Start") );
             TAB_INSERT( p_marks->i_seekpoint, p_marks->seekpoint, sp, 0 );
+            TAB_INSERT( offsetc, offsetv, UINT64_C(0), 0 );
         }
     }
 
     if( p_marks->i_seekpoint > 0 )
+    {
         p_sys->p_marks = p_marks;
+        p_sys->offsets = offsetv;
+    }
     else
+    {
         vlc_input_title_Delete( p_marks );
+        TAB_CLEAN( offsetc, offsetv );
+    }
 
     fclose( marksfile );
     fclose( indexfile );

@@ -43,6 +43,7 @@ enum access_query_e
     ACCESS_CAN_PAUSE,       /* arg1= bool*    cannot fail */
     ACCESS_CAN_CONTROL_PACE,/* arg1= bool*    cannot fail */
     ACCESS_GET_SIZE=6,      /* arg1= uin64_t* */
+    ACCESS_IS_DIRECTORY,    /* arg1= bool *, arg2= bool *, res=can fail */
 
     /* */
     ACCESS_GET_PTS_DELAY = 0x101,/* arg1= int64_t*       cannot fail */
@@ -77,9 +78,10 @@ struct access_t
     /* Module properties */
     module_t    *p_module;
 
-    /* Access name (empty if non forced) */
-    char        *psz_access;
-    char        *psz_location; /**< Location (URL with the scheme stripped) */
+
+    char        *psz_access; /**< Access name (empty if non forced) */
+    char        *psz_url; /**< Full URL or MRL */
+    const char  *psz_location; /**< Location (URL with the scheme stripped) */
     char        *psz_filepath; /**< Local file path (if applicable) */
 
     /* pf_read/pf_block/pf_readdir is used to read data.
@@ -103,15 +105,7 @@ struct access_t
     /* Access has to maintain them uptodate */
     struct
     {
-        uint64_t     i_pos;     /* idem */
         bool         b_eof;     /* idem */
-
-        bool         b_dir_sorted; /* Set it to true if items returned by
-                                    * pf_readdir are already sorted. */
-
-        bool         b_dir_can_loop;  /* Set it to true if the access can't know
-                                       * if children can loop into their parents.
-                                       * It's the case for most network accesses. */
     } info;
     access_sys_t *p_sys;
 
@@ -145,14 +139,6 @@ static inline int vlc_access_Seek(access_t *access, uint64_t offset)
     if (access->pf_seek == NULL)
         return VLC_EGENERIC;
     return access->pf_seek(access, offset);
-}
-
-/**
- * Gets the read byte offset.
- */
-static inline uint64_t vlc_access_Tell(const access_t *access)
-{
-    return access->info.i_pos;
 }
 
 /**
@@ -233,17 +219,13 @@ static inline int access_Control( access_t *p_access, int i_query, ... )
     return i_result;
 }
 
-static inline uint64_t access_GetSize( access_t *p_access )
+static inline int access_GetSize( access_t *p_access, uint64_t *size )
 {
-    uint64_t val;
-    if( access_Control( p_access, ACCESS_GET_SIZE, &val ) )
-        val = 0;
-    return val;
+    return access_Control( p_access, ACCESS_GET_SIZE, size );
 }
 
 static inline void access_InitFields( access_t *p_a )
 {
-    p_a->info.i_pos = 0;
     p_a->info.b_eof = false;
 }
 

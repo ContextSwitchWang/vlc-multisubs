@@ -39,7 +39,7 @@ AbstractPlaylist::AbstractPlaylist (stream_t *stream_) :
     availabilityStartTime.Set( 0 );
     availabilityEndTime.Set( 0 );
     duration.Set( 0 );
-    minUpdatePeriod.Set( 2 );
+    minUpdatePeriod.Set( 2 * CLOCK_FREQ );
     maxSegmentDuration.Set( 0 );
     minBufferTime.Set( 0 );
     timeShiftBufferDepth.Set( 0 );
@@ -110,24 +110,6 @@ BasePeriod* AbstractPlaylist::getNextPeriod(BasePeriod *period)
     return NULL;
 }
 
-void AbstractPlaylist::getTimeLinesBoundaries(mtime_t *min, mtime_t *max) const
-{
-    *min = *max = 0;
-    for(size_t i = 0; i < periods.size(); i++)
-    {
-        std::vector<SegmentTimeline *> timelines;
-        periods.at(i)->collectTimelines(&timelines);
-
-        for(size_t j = 0; j < timelines.size(); j++)
-        {
-            const SegmentTimeline *timeline = timelines.at(j);
-            if(timeline->start() > *min)
-                *min = timeline->start();
-            if(!*max || timeline->end() < *max)
-                *max = timeline->end();
-        }
-    }
-}
 
 void AbstractPlaylist::getPlaylistDurationsRange(mtime_t *min, mtime_t *max) const
 {

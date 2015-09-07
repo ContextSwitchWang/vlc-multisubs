@@ -75,6 +75,7 @@ Demuxers:
 
 Stream filter:
  * Added ARIB STD-B25 TS streams decoder
+ * Added stream prebuffering plugin
  * Removed HTTP Live streaming stream filter
 
 Audio output:
@@ -165,6 +166,7 @@ Removed modules
  * Atmo video filter
  * QTCapture access module (use AVCapture instead)
  * httplive (use adaptive instead)
+ * Gnome-VFS access module (i.e. Gnome 2.x)
 
 
 Changes between 2.2.0 and 2.2.1:

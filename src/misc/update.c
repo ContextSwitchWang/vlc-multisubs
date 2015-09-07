@@ -192,9 +192,8 @@ static bool GetUpdateFile( update_t *p_update )
         goto error;
     }
 
-    const int64_t i_read = stream_Size( p_stream );
-
-    if( i_read < 0 || i_read >= UINT16_MAX)
+    uint64_t i_read;
+    if( stream_GetSize( p_stream, &i_read ) || i_read >= UINT16_MAX )
     {
         msg_Err(p_update->p_libvlc, "Status file too large");
         goto error;
@@ -204,7 +203,7 @@ static bool GetUpdateFile( update_t *p_update )
     if( !psz_update_data )
         goto error;
 
-    if( stream_Read( p_stream, psz_update_data, i_read ) != i_read )
+    if( stream_Read( p_stream, psz_update_data, i_read ) != (ssize_t)i_read )
     {
         msg_Err( p_update->p_libvlc, "Couldn't download update file %s",
                 UPDATE_VLC_STATUS_URL );
@@ -472,7 +471,7 @@ bool update_NeedUpgrade( update_t *p_update )
  * \param l_size the size in bytes
  * \return the size as a string
  */
-static char *size_str( long int l_size )
+static char *size_str( uint64_t l_size )
 {
     char *psz_tmp = NULL;
     int i_retval = 0;
@@ -527,8 +526,8 @@ static void* update_DownloadReal( void *obj )
 {
     update_download_thread_t *p_udt = (update_download_thread_t *)obj;
     dialog_progress_bar_t *p_progress = NULL;
-    long int l_size;
-    long int l_downloaded = 0;
+    uint64_t l_size;
+    uint64_t l_downloaded = 0;
     float f_progress;
     char *psz_status;
     char *psz_downloaded = NULL;
@@ -557,7 +556,8 @@ static void* update_DownloadReal( void *obj )
     }
 
     /* Get the stream size */
-    l_size = stream_Size( p_stream );
+    if( stream_GetSize( p_stream, &l_size ) || l_size == 0 )
+        goto end;
 
     /* Get the file name and open it*/
     psz_tmpdestfile = strrchr( p_update->release.psz_url, '/' );

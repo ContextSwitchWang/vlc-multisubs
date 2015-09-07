@@ -695,6 +695,9 @@ static const char *const ppsz_prefres[] = {
     "You can use this option to place the subtitles under the movie, " \
     "instead of over the movie. Try several positions.")
 
+#define SUB_TEXT_SCALE_TEXT N_("Subtitles text scaling factor")
+#define SUB_TEXT_SCALE_LONGTEXT N_("Set value to alter subtitles size where possible")
+
 #define SPU_TEXT N_("Enable sub-pictures")
 #define SPU_LONGTEXT N_( \
     "You can completely disable the sub-picture processing.")
@@ -1267,6 +1270,10 @@ static const char *const mouse_wheel_texts[] = {
 #define SUBDELAY_UP_KEY_LONGTEXT N_("Select the key to increase the subtitle delay.")
 #define SUBDELAY_DOWN_KEY_TEXT N_("Subtitle delay down")
 #define SUBDELAY_DOWN_KEY_LONGTEXT N_("Select the key to decrease the subtitle delay.")
+#define SUBTEXT_SCALE_KEY_TEXT     N_("Reset subtitles text scale")
+#define SUBTEXT_SCALEDOWN_KEY_TEXT N_("Scale up subtitles text")
+#define SUBTEXT_SCALEUP_KEY_TEXT   N_("Scale down subtitles text")
+#define SUBTEXT_SCALE_KEY_LONGTEXT N_("Select the key to change subtitles text scaling")
 #define SUBSYNC_MARKAUDIO_KEY_TEXT N_("Subtitle sync / bookmark audio timestamp")
 #define SUBSYNC_MARKAUDIO_KEY_LONGTEXT N_("Select the key to bookmark audio timestamp when syncing subtitles.")
 #define SUBSYNC_MARKSUB_KEY_TEXT N_("Subtitle sync / bookmark subtitle timestamp")
@@ -1628,6 +1635,9 @@ vlc_module_begin ()
                  SUB_PATH_TEXT, SUB_PATH_LONGTEXT, true )
     add_integer( "sub-margin", 0, SUB_MARGIN_TEXT,
                  SUB_MARGIN_LONGTEXT, true )
+    add_integer_with_range( "sub-text-scale", 100, 10, 500,
+               SUB_TEXT_SCALE_TEXT, SUB_TEXT_SCALE_LONGTEXT, false )
+        change_volatile  ()
     set_section( N_( "Overlays" ) , NULL )
     add_module_list( "sub-source", "sub source", NULL,
                      SUB_SOURCE_TEXT, SUB_SOURCE_LONGTEXT, false )
@@ -1791,7 +1801,6 @@ vlc_module_begin ()
     add_obsolete_integer( "dv-caching" ) /* 2.0.0 */
     add_obsolete_integer( "dvb-caching" ) /* 2.0.0 */
     add_obsolete_integer( "eyetv-caching" ) /* 2.0.0 */
-    add_obsolete_integer( "gnomevfs-caching" ) /* 2.0.0 */
     add_obsolete_integer( "jack-input-caching" ) /* 2.0.0 */
     add_obsolete_integer( "linsys-hdsdi-caching" ) /* 2.0.0 */
     add_obsolete_integer( "linsys-sdi-caching" ) /* 2.0.0 */
@@ -2145,6 +2154,9 @@ vlc_module_begin ()
 #   define KEY_SUBDELAY_DOWN      "h"
 #   define KEY_SUBPOS_DOWN        NULL
 #   define KEY_SUBPOS_UP          NULL
+#   define KEY_SUBTEXT_SCALEUP    "Command+Mouse Wheel Up"
+#   define KEY_SUBTEXT_SCALEDOWN  "Command+Mouse Wheel Down"
+#   define KEY_SUBTEXT_SCALE      "Command+0"
 #   define KEY_SUBSYNC_MARKAUDIO  "Shift+h"
 #   define KEY_SUBSYNC_MARKSUB    "Shift+j"
 #   define KEY_SUBSYNC_APPLY      "Shift+k"
@@ -2277,6 +2289,9 @@ vlc_module_begin ()
 #   define KEY_SUBDELAY_DOWN      "g"
 #   define KEY_SUBPOS_DOWN        NULL
 #   define KEY_SUBPOS_UP          NULL
+#   define KEY_SUBTEXT_SCALEUP    "Ctrl+Mouse Wheel Up"
+#   define KEY_SUBTEXT_SCALEDOWN  "Ctrl+Mouse Wheel Down"
+#   define KEY_SUBTEXT_SCALE      "Ctrl+0"
 #   define KEY_SUBSYNC_MARKAUDIO  "Shift+h"
 #   define KEY_SUBSYNC_MARKSUB    "Shift+j"
 #   define KEY_SUBSYNC_APPLY      "Shift+k"
@@ -2592,6 +2607,12 @@ vlc_module_begin ()
     add_key( "key-clear-playlist", KEY_PLAY_CLEAR,
              PLAY_CLEAR_KEY_TEXT, PLAY_CLEAR_KEY_LONGTEXT, true )
 
+    add_key( "key-subtitle-text-scale-normal", KEY_SUBTEXT_SCALE,
+             SUBTEXT_SCALE_KEY_TEXT, SUBTEXT_SCALE_KEY_LONGTEXT, true )
+    add_key( "key-subtitle-text-scale-up", KEY_SUBTEXT_SCALEUP,
+             SUBTEXT_SCALEUP_KEY_TEXT, SUBTEXT_SCALE_KEY_LONGTEXT, true )
+    add_key( "key-subtitle-text-scale-down", KEY_SUBTEXT_SCALEDOWN,
+             SUBTEXT_SCALEDOWN_KEY_TEXT, SUBTEXT_SCALE_KEY_LONGTEXT, true )
 
     add_string( "bookmark1", NULL,
              BOOKMARK1_TEXT, BOOKMARK_LONGTEXT, false )

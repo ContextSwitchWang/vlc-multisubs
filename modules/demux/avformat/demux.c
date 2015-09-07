@@ -163,28 +163,43 @@ int OpenDemux( vlc_object_t *p_this )
     int64_t       i_start_time = -1;
     bool          b_can_seek;
     char         *psz_url;
+    const uint8_t *peek;
     int           error;
+
+    /* Init Probe data */
+    pd.buf_size = stream_Peek( p_demux->s, &peek, 2048 + 213 );
+    if( pd.buf_size <= 0 )
+    {
+        msg_Warn( p_demux, "cannot peek" );
+        return VLC_EGENERIC;
+    }
+
+    pd.buf = malloc( pd.buf_size + AVPROBE_PADDING_SIZE );
+    if( unlikely(pd.buf == NULL) )
+        return VLC_ENOMEM;
+
+    memcpy( pd.buf, peek, pd.buf_size );
+    memset( pd.buf + pd.buf_size, 0, AVPROBE_PADDING_SIZE );
 
     if( p_demux->psz_file )
         psz_url = strdup( p_demux->psz_file );
     else
     {
-        if( asprintf( &psz_url, "%s://%s", p_demux->psz_access, p_demux->psz_location ) == -1)
-            return VLC_ENOMEM;
+        if( asprintf( &psz_url, "%s://%s", p_demux->psz_access,
+                      p_demux->psz_location ) == -1)
+            psz_url = NULL;
     }
-    msg_Dbg( p_demux, "trying url: %s", psz_url );
-    /* Init Probe data */
+
+    if( psz_url != NULL )
+        msg_Dbg( p_demux, "trying url: %s", psz_url );
+
     pd.filename = psz_url;
-    if( ( pd.buf_size = stream_Peek( p_demux->s, (const uint8_t**)&pd.buf, 2048 + 213 ) ) <= 0 )
-    {
-        free( psz_url );
-        msg_Warn( p_demux, "cannot peek" );
-        return VLC_EGENERIC;
-    }
+
     stream_Control( p_demux->s, STREAM_CAN_SEEK, &b_can_seek );
 
     vlc_init_avformat(p_this);
 
+    /* Guess format */
     char *psz_format = var_InheritString( p_this, "avformat-format" );
     if( psz_format )
     {
@@ -193,8 +208,12 @@ int OpenDemux( vlc_object_t *p_this )
         free( psz_format );
     }
 
-    /* Guess format */
-    if( !fmt && !( fmt = av_probe_input_format( &pd, 1 ) ) )
+    if( fmt == NULL )
+        fmt = av_probe_input_format( &pd, 1 );
+
+    free( pd.buf );
+
+    if( fmt == NULL )
     {
         msg_Dbg( p_demux, "couldn't guess format" );
         free( psz_url );
@@ -270,7 +289,7 @@ int OpenDemux( vlc_object_t *p_this )
     p_sys->io_buffer = xmalloc( p_sys->io_buffer_size );
 
     p_sys->ic = avformat_alloc_context();
-    p_sys->ic->pb = avio_alloc_context( p_sys->io_buffer,
+    AVIOContext *pb = p_sys->ic->pb = avio_alloc_context( p_sys->io_buffer,
         p_sys->io_buffer_size, 0, p_demux, IORead, NULL, IOSeek );
     p_sys->ic->pb->seekable = b_can_seek ? AVIO_SEEKABLE_NORMAL : 0;
     error = avformat_open_input(&p_sys->ic, psz_url, p_sys->fmt, NULL);
@@ -279,6 +298,7 @@ int OpenDemux( vlc_object_t *p_this )
     {
         msg_Err( p_demux, "Could not open %s: %s", psz_url,
                  vlc_strerror_c(AVUNERROR(error)) );
+        av_free( pb );
         p_sys->ic = NULL;
         free( psz_url );
         CloseDemux( p_this );
@@ -462,8 +482,9 @@ int OpenDemux( vlc_object_t *p_this )
                         p_attachment = vlc_input_attachment_New(
                                 filename->value, "application/x-truetype-font",
                                 NULL, cc->extradata, (int)cc->extradata_size );
-                        TAB_APPEND( p_sys->i_attachments, p_sys->attachments,
-                                p_attachment );
+                        if( p_attachment )
+                            TAB_APPEND( p_sys->i_attachments, p_sys->attachments,
+                                        p_attachment );
                     }
                 }
                 else msg_Warn( p_demux, "unsupported attachment type (%u) in avformat demux", cc->codec_id );

@@ -198,7 +198,9 @@ bool SegmentInformation::getSegmentNumberByTime(mtime_t time, uint64_t *ret) con
     }
     else if ( segmentList && !segmentList->getSegments().empty() )
     {
-        return segmentList->getSegmentNumberByTime(time, ret);
+        const uint64_t timescale = segmentList->inheritTimescale();
+        time = time * timescale / CLOCK_FREQ;
+        return segmentList->getSegmentNumberByScaledTime(time, ret);
     }
     else if( segmentBase )
     {
@@ -206,7 +208,7 @@ bool SegmentInformation::getSegmentNumberByTime(mtime_t time, uint64_t *ret) con
         time = time * timescale / CLOCK_FREQ;
         *ret = 0;
         const std::vector<ISegment *> list = segmentBase->subSegments();
-        return SegmentInfoCommon::getSegmentNumberByTime(list, time, ret);
+        return SegmentInfoCommon::getSegmentNumberByScaledTime(list, time, ret);
     }
 
     if(parent)
@@ -242,15 +244,7 @@ mtime_t SegmentInformation::getPlaybackTimeBySegmentNumber(uint64_t number) cons
     return time;
 }
 
-void SegmentInformation::collectTimelines(std::vector<SegmentTimeline *> *timelines) const
-{
-    if(mediaSegmentTemplate && mediaSegmentTemplate->segmentTimeline.Get())
-        timelines->push_back(mediaSegmentTemplate->segmentTimeline.Get());
 
-    std::vector<SegmentInformation *>::const_iterator it;
-    for(it = childs.begin(); it != childs.end(); ++it)
-        (*it)->collectTimelines(timelines);
-}
 
 void SegmentInformation::getDurationsRange(mtime_t *min, mtime_t *max) const
 {
@@ -261,7 +255,7 @@ void SegmentInformation::getDurationsRange(mtime_t *min, mtime_t *max) const
     mtime_t total = 0;
     for(it = seglist.begin(); it != seglist.end(); ++it)
     {
-        const mtime_t duration = (*it)->duration.Get();
+        const mtime_t duration = (*it)->duration.Get() * CLOCK_FREQ / inheritTimescale();
         if(duration)
         {
             total += duration;
@@ -273,6 +267,18 @@ void SegmentInformation::getDurationsRange(mtime_t *min, mtime_t *max) const
 
     if(total > *max)
         *max = total;
+
+    if(mediaSegmentTemplate && mediaSegmentTemplate->segmentTimeline.Get())
+    {
+        const mtime_t duration = mediaSegmentTemplate->segmentTimeline.Get()->start() -
+                                 mediaSegmentTemplate->segmentTimeline.Get()->end();
+
+        if (!*min || duration < *min)
+            *min = duration;
+
+        if(duration > *max)
+            *max = duration;
+    }
 
     for(size_t i=0; i<childs.size(); i++)
         childs.at(i)->getDurationsRange(min, max);
@@ -334,7 +340,7 @@ void SegmentInformation::setSegmentTemplate(MediaSegmentTemplate *templ)
 }
 
 static void insertIntoSegment(std::vector<ISegment *> &seglist, size_t start,
-                              size_t end, mtime_t time)
+                              size_t end, stime_t time)
 {
     std::vector<ISegment *>::iterator segIt;
     for(segIt = seglist.begin(); segIt < seglist.end(); ++segIt)
@@ -360,6 +366,7 @@ void SegmentInformation::SplitUsingIndex(std::vector<SplitPoint> &splitlist)
     std::vector<SplitPoint>::const_iterator splitIt;
     size_t start = 0, end = 0;
     mtime_t time = 0;
+    const uint64_t i_timescale = inheritTimescale();
 
     for(splitIt = splitlist.begin(); splitIt < splitlist.end(); ++splitIt)
     {
@@ -369,15 +376,14 @@ void SegmentInformation::SplitUsingIndex(std::vector<SplitPoint> &splitlist)
         if(splitIt == splitlist.begin() && split.offset == 0)
             continue;
         time = split.time;
-        insertIntoSegment(seglist, start, end, time);
-        end++;
+        insertIntoSegment(seglist, start, end - 1, time * i_timescale / CLOCK_FREQ);
     }
 
     if(start != 0)
     {
         start = end;
         end = 0;
-        insertIntoSegment(seglist, start, end, time);
+        insertIntoSegment(seglist, start, end, time * i_timescale / CLOCK_FREQ);
     }
 }
 

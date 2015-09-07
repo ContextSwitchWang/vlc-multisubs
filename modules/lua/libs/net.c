@@ -166,10 +166,9 @@ static void vlclua_fd_unmap_safe( lua_State *L, unsigned idx )
 static int vlclua_url_parse( lua_State *L )
 {
     const char *psz_url = luaL_checkstring( L, 1 );
-    const char *psz_option = luaL_optstring( L, 2, NULL );
     vlc_url_t url;
 
-    vlc_UrlParse( &url, psz_url, psz_option?*psz_option:0 );
+    vlc_UrlParse( &url, psz_url );
 
     lua_newtable( L );
     lua_pushstring( L, url.psz_protocol );
@@ -350,7 +349,7 @@ static int vlclua_net_poll( lua_State *L )
     }
 
     vlc_interrupt_t *oint = vlclua_set_interrupt( L );
-    int ret = 1, val;
+    int ret = 1, val = -1;
 
     do
     {

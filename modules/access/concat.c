@@ -23,6 +23,7 @@
 #endif
 
 #include <assert.h>
+#include <stdint.h>
 
 #include <vlc_common.h>
 #include <vlc_plugin.h>
@@ -92,10 +93,7 @@ static ssize_t Read(access_t *access, uint8_t *buf, size_t len)
         return 0;
     }
 
-    ssize_t ret = vlc_access_Read(a, buf, len);
-    if (ret >= 0)
-        access->info.i_pos += ret;
-    return ret;
+    return vlc_access_Read(a, buf, len);
 }
 
 static block_t *Block(access_t *access)
@@ -120,10 +118,7 @@ static block_t *Block(access_t *access)
 
     ssize_t ret = vlc_access_Read(a, block->p_buffer, block->i_buffer);
     if (ret >= 0)
-    {
         block->i_buffer = ret;
-        access->info.i_pos += ret;
-    }
     else
     {
         block_Release(block);
@@ -143,9 +138,8 @@ static int Seek(access_t *access, uint64_t position)
     }
 
     sys->next = sys->first;
-    access->info.i_pos = 0;
 
-    for (;;)
+    for (uint64_t offset = 0;;)
     {
         access_t *a = GetAccess(access);
         if (a == NULL)
@@ -156,18 +150,18 @@ static int Seek(access_t *access, uint64_t position)
         if (!can_seek)
             break;
 
-        uint64_t size = access_GetSize(a);
+        uint64_t size;
 
-        if (position - access->info.i_pos < size)
+        if (access_GetSize(a, &size))
+            break;
+        if (position - offset < size)
         {
-            if (vlc_access_Seek(a, position - access->info.i_pos))
+            if (vlc_access_Seek(a, position - offset))
                 break;
-
-            access->info.i_pos = position;
             return VLC_SUCCESS;
         }
 
-        access->info.i_pos += size;
+        offset += size;
         vlc_access_Delete(a);
         sys->access = NULL;
     }
@@ -194,6 +188,8 @@ static int Control(access_t *access, int query, va_list args)
             *va_arg(args, bool *) = sys->can_control_pace;
             break;
         case ACCESS_GET_SIZE:
+            if (sys->size == UINT64_MAX)
+                return VLC_EGENERIC;
             *va_arg(args, uint64_t *) = sys->size;
             break;
         case ACCESS_GET_PTS_DELAY:
@@ -280,8 +276,15 @@ static int Open(vlc_object_t *obj)
             access_Control(a, ACCESS_CAN_PAUSE, &sys->can_pause);
         if (sys->can_control_pace)
             access_Control(a, ACCESS_CAN_CONTROL_PACE, &sys->can_control_pace);
+        if (sys->size != UINT64_MAX)
+        {
+            uint64_t size;
 
-        sys->size += access_GetSize(a);
+            if (access_GetSize(a, &size))
+                sys->size = UINT64_MAX;
+            else
+                sys->size += size;
+        }
 
         int64_t caching;
         access_Control(a, ACCESS_GET_PTS_DELAY, &caching);

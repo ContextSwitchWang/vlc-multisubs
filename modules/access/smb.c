@@ -90,6 +90,7 @@ static int Seek( access_t *, uint64_t );
 static int Control( access_t *, int, va_list );
 #ifndef _WIN32
 static input_item_t* DirRead( access_t * );
+static int DirControl( access_t *, int, va_list );
 #endif
 
 struct access_sys_t
@@ -253,8 +254,7 @@ static int Open( vlc_object_t *p_this )
         return VLC_EGENERIC;
 #else
         p_access->pf_readdir = DirRead;
-        p_access->pf_control = access_vaDirectoryControlHelper;
-        p_access->info.b_dir_can_loop = true;
+        p_access->pf_control = DirControl;
         i_smb = smbc_opendir( psz_uri );
         i_size = 0;
 #endif
@@ -318,7 +318,6 @@ static int Seek( access_t *p_access, uint64_t i_pos )
     }
 
     p_access->info.b_eof = false;
-    p_access->info.i_pos = i_ret;
 
     return VLC_SUCCESS;
 }
@@ -337,11 +336,11 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     if( i_read < 0 )
     {
         msg_Err( p_access, "read failed (%s)", vlc_strerror_c(errno) );
+        p_access->info.b_eof = true;
         return -1;
     }
 
     if( i_read == 0 ) p_access->info.b_eof = true;
-    else if( i_read > 0 ) p_access->info.i_pos += i_read;
 
     return i_read;
 }
@@ -396,6 +395,21 @@ static input_item_t* DirRead (access_t *p_access )
     }
     return p_item;
 }
+
+static int DirControl( access_t *p_access, int i_query, va_list args )
+{
+    switch( i_query )
+    {
+    case ACCESS_IS_DIRECTORY:
+        *va_arg( args, bool * ) = false; /* is not sorted */
+        *va_arg( args, bool * ) = true; /* might loop */
+        break;
+    default:
+        return access_vaDirectoryControlHelper( p_access, i_query, args );
+    }
+
+    return VLC_SUCCESS;
+}
 #endif
 
 /*****************************************************************************
@@ -413,6 +427,8 @@ static int Control( access_t *p_access, int i_query, va_list args )
         break;
 
     case ACCESS_GET_SIZE:
+        if( p_access->pf_readdir != NULL )
+            return VLC_EGENERIC;
         *va_arg( args, uint64_t * ) = p_access->p_sys->size;
         break;
 

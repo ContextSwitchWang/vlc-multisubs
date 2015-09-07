@@ -144,11 +144,11 @@ static vout_thread_t *VoutCreate(vlc_object_t *object,
     vlc_mutex_init(&vout->p->filter.lock);
     vlc_mutex_init(&vout->p->spu_lock);
 
-    /* Initialize subpicture unit */
-    vout->p->spu = spu_Create(vout);
-
     /* Take care of some "interface/control" related initialisations */
     vout_IntfInit(vout);
+
+    /* Initialize subpicture unit */
+    vout->p->spu = spu_Create(vout);
 
     vout->p->title.show     = var_InheritBool(vout, "video-title-show");
     vout->p->title.timeout  = var_InheritInteger(vout, "video-title-timeout");
@@ -977,7 +977,11 @@ static int ThreadDisplayRenderPicture(vout_thread_t *vout, bool is_forced)
             subpic = NULL;
         }
         if (!sys->display.filtered)
+        {
+            if (subpic != NULL)
+                subpicture_Delete(subpic);
             return VLC_EGENERIC;
+        }
     }
 
     vout_chrono_Stop(&vout->p->render);

@@ -32,9 +32,10 @@ typedef struct
     FT_BitmapGlyph p_glyph;
     FT_BitmapGlyph p_outline;
     FT_BitmapGlyph p_shadow;
-    uint32_t       i_color;             /* ARGB color */
+    const text_style_t *p_style;
     int            i_line_offset;       /* underline/strikethrough offset */
     int            i_line_thickness;    /* underline/strikethrough thickness */
+    bool           b_in_karaoke;
 } line_character_t;
 
 typedef struct line_desc_t line_desc_t;
@@ -46,6 +47,8 @@ struct line_desc_t
     int              i_height;
     int              i_base_line;
     int              i_character_count;
+    int              i_first_visible_char_index;
+    int              i_last_visible_char_index;
     line_character_t *p_character;
     FT_BBox          bbox;
 };
@@ -56,4 +59,4 @@ line_desc_t *NewLine( int i_count );
 int LayoutText(filter_t *p_filter, line_desc_t **pp_lines,
                 FT_BBox *p_bbox, int *pi_max_face_height,
                 const uni_char_t *psz_text, text_style_t **pp_styles,
-                uint32_t *pi_k_dates, int i_len );
+                uint32_t *pi_k_dates, int i_len, bool );

@@ -299,9 +299,13 @@ case "${build_os}" in
     cygwin|msys)
         ac_executable_extensions=".exe"
     ;;
+    os2*)
+        BUILDEXEEXT=".exe"
+    ;;
     *)
     ;;
 esac
+AC_SUBST(BUILDEXEEXT)
 
 dnl Android is linux, but a bit different
 AS_IF([test "$SYS" = linux],[
@@ -532,7 +536,7 @@ need_libc=false
 
 dnl Check for usual libc functions
 AC_CHECK_DECLS([nanosleep],,,[#include <time.h>])
-AC_CHECK_FUNCS([daemon fcntl fstatvfs fork getenv getpwuid_r isatty lstat memalign mmap open_memstream openat pread posix_fadvise posix_madvise setlocale stricmp strnicmp strptime uselocale pthread_cond_timedwait_monotonic_np pthread_condattr_setclock])
+AC_CHECK_FUNCS([daemon fcntl fstatvfs fork getenv getpwuid_r isatty lstat memalign mkostemp mmap open_memstream openat pread posix_fadvise posix_madvise setlocale stricmp strnicmp strptime uselocale pthread_cond_timedwait_monotonic_np pthread_condattr_setclock])
 AC_REPLACE_FUNCS([atof atoll dirfd fdopendir ffsll flockfile fsync getdelim getpid lldiv nrand48 poll posix_memalign rewind setenv strcasecmp strcasestr strdup strlcpy strndup strnlen strsep strtof strtok_r strtoll swab tdestroy strverscmp])
 AC_CHECK_FUNCS(fdatasync,,
   [AC_DEFINE(fdatasync, fsync, [Alias fdatasync() to fsync() if missing.])
@@ -1694,6 +1698,15 @@ dnl
 dnl libdvdnav plugin
 dnl
 PKG_ENABLE_MODULES_VLC([DVDNAV], [], [dvdnav > 4.9.0], [DVD with navigation input module (dvdnav)], [auto])
+AS_IF([test "${enable_dvdnav}" != "no"], [
+  AC_MSG_CHECKING(for dvdnav_stream_cb in dvdnav/dvdnav.h)
+    AC_EGREP_HEADER(dvdnav_stream_cb,dvdnav/dvdnav.h,[
+      AC_MSG_RESULT(yes)
+      AC_DEFINE(HAVE_STREAM_CB_IN_DVDNAV_H, 1, For dvdnav demux support)
+      ],[
+      AC_MSG_RESULT(no)
+    ])
+])
 
 dnl
 dnl  Blu-ray Disc Support with libbluray
@@ -1764,11 +1777,6 @@ then
 fi
 AM_CONDITIONAL(HAVE_DECKLINK, [ test "${have_decklink}" != "no" ])
 
-
-dnl
-dnl  gnomeVFS access module
-dnl
-PKG_ENABLE_MODULES_VLC([GNOMEVFS], [gnomevfs], [gnome-vfs-2.0], [GnomeVFS access module], [auto])
 
 dnl
 dnl  VCDX modules
@@ -3966,6 +3974,13 @@ AS_IF([test "${enable_taglib}" != "no"], [
     AC_MSG_WARN([${TAGLIB_PKG_ERRORS}.])])
 ])
 
+dnl
+dnl  Developers helper modules (should be hidden from configure help)
+dnl
+AC_ARG_ENABLE(devtools, [], [], [enable_devtools="no"])
+AS_IF([test "${enable_devtools}" != "no"], [
+  VLC_ADD_PLUGIN([accesstweaks])
+])
 
 dnl
 dnl update checking system

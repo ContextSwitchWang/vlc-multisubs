@@ -751,8 +751,8 @@ static void ProbePES( demux_t *p_demux, ts_pid_t *pid, const uint8_t *p_pesstart
         return;
 
     const uint8_t *p_data = &p_pes[i_payloadoffset];
-    /* AUDIO STREAM */
-    if(p_pes[3] >= 0xC0 && p_pes[3] <= 0xDF)
+    /* NON MPEG audio & subpictures STREAM */
+    if(p_pes[3] == 0xBD)
     {
         if( !memcmp( p_data, "\x7F\xFE\x80\x01", 4 ) )
         {
@@ -764,7 +764,11 @@ static void ProbePES( demux_t *p_demux, ts_pid_t *pid, const uint8_t *p_pesstart
             pid->probed.i_type = 0x06;
             pid->probed.i_fourcc = VLC_CODEC_EAC3;
         }
-        else if( p_data[0] == 0xFF && (p_data[1] & 0xE0) == 0xE0 )
+    }
+    /* MPEG AUDIO STREAM */
+    else if(p_pes[3] >= 0xC0 && p_pes[3] <= 0xDF)
+    {
+        if( p_data[0] == 0xFF && (p_data[1] & 0xE0) == 0xE0 )
         {
             switch(p_data[1] & 18)
             {
@@ -803,7 +807,7 @@ static void ProbePES( demux_t *p_demux, ts_pid_t *pid, const uint8_t *p_pesstart
     /* VIDEO STREAM */
     else if( p_pes[3] >= 0xE0 && p_pes[3] <= 0xEF )
     {
-        if( !memcmp( p_data, "\x00\x00\x00", 4 ) )
+        if( !memcmp( p_data, "\x00\x00\x00\x01", 4 ) )
         {
             pid->probed.i_type = 0x1b;
             pid->probed.i_fourcc = VLC_CODEC_H264;
@@ -931,7 +935,7 @@ static void MissingPATPMTFixup( demux_t *p_demux )
                 p_pid->probed.i_type == -1 )
                 continue;
 
-            esstreams[j].pes.i_stream_type = p_pid->probed.i_type;
+            esstreams[j].pes.i_codec = p_pid->probed.i_fourcc;
             esstreams[j].pes.i_stream_type = p_pid->probed.i_type;
             esstreams[j].ts.i_pid = p_pid->i_pid;
             mapped[j].pes = &esstreams[j].pes;
@@ -5348,11 +5352,13 @@ static void PMTCallBack( void *data, dvbpsi_pmt_t *p_dvbpsipmt )
                 /* p_pes points to a tmp pes */
                 if( !es_format_IsSimilar( &pespid->u.p_pes->es.fmt, &p_pes->es.fmt ) ||
                     pespid->u.p_pes->es.fmt.i_extra != p_pes->es.fmt.i_extra ||
-                    memcmp( pespid->u.p_pes->es.fmt.p_extra, p_pes->es.fmt.p_extra,
-                            p_pes->es.fmt.i_extra ) ||
+                    ( pespid->u.p_pes->es.fmt.i_extra > 0 &&
+                      memcmp( pespid->u.p_pes->es.fmt.p_extra,
+                              p_pes->es.fmt.p_extra,
+                              p_pes->es.fmt.i_extra ) ) ||
                     pespid->u.p_pes->extra_es.i_size != p_pes->extra_es.i_size ||
                     !!pespid->u.p_pes->es.fmt.psz_language != !!p_pes->es.fmt.psz_language ||
-                    ( pespid->u.p_pes->es.fmt.psz_language && p_pes->es.fmt.psz_language &&
+                    ( pespid->u.p_pes->es.fmt.psz_language != NULL &&
                       strcmp( pespid->u.p_pes->es.fmt.psz_language, p_pes->es.fmt.psz_language ) )
                   )
                 {
