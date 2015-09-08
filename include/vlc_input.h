@@ -47,7 +47,6 @@
  *****************************************************************************/
 struct seekpoint_t
 {
-    int64_t i_byte_offset;
     int64_t i_time_offset;
     char    *psz_name;
 };
@@ -57,7 +56,6 @@ static inline seekpoint_t *vlc_seekpoint_New( void )
     seekpoint_t *point = (seekpoint_t*)malloc( sizeof( seekpoint_t ) );
     if( !point )
         return NULL;
-    point->i_byte_offset =
     point->i_time_offset = -1;
     point->psz_name = NULL;
     return point;
@@ -75,7 +73,6 @@ static inline seekpoint_t *vlc_seekpoint_Duplicate( const seekpoint_t *src )
     seekpoint_t *point = vlc_seekpoint_New();
     if( src->psz_name ) point->psz_name = strdup( src->psz_name );
     point->i_time_offset = src->i_time_offset;
-    point->i_byte_offset = src->i_byte_offset;
     return point;
 }
 
@@ -89,7 +86,6 @@ typedef struct input_title_t
     bool        b_menu;      /* Is it a menu or a normal entry */
 
     int64_t     i_length;   /* Length(microsecond) if known, else 0 */
-    int64_t     i_size;     /* Size (bytes) if known, else 0 */
 
     /* Title seekpoint */
     int         i_seekpoint;
@@ -105,7 +101,6 @@ static inline input_title_t *vlc_input_title_New(void)
     t->psz_name = NULL;
     t->b_menu = false;
     t->i_length = 0;
-    t->i_size   = 0;
     t->i_seekpoint = 0;
     t->seekpoint = NULL;
 
@@ -136,7 +131,6 @@ static inline input_title_t *vlc_input_title_Duplicate( const input_title_t *t )
     if( t->psz_name ) dup->psz_name = strdup( t->psz_name );
     dup->b_menu      = t->b_menu;
     dup->i_length    = t->i_length;
-    dup->i_size      = t->i_size;
     dup->i_seekpoint = t->i_seekpoint;
     if( t->i_seekpoint > 0 )
     {
@@ -161,47 +155,53 @@ struct input_attachment_t
     char *psz_mime;
     char *psz_description;
 
-    int  i_data;
+    size_t i_data;
     void *p_data;
 };
+
+static inline void vlc_input_attachment_Delete( input_attachment_t *a )
+{
+    if( !a )
+        return;
+
+    free( a->p_data );
+    free( a->psz_description );
+    free( a->psz_mime );
+    free( a->psz_name );
+    free( a );
+}
 
 static inline input_attachment_t *vlc_input_attachment_New( const char *psz_name,
                                                             const char *psz_mime,
                                                             const char *psz_description,
                                                             const void *p_data,
-                                                            int i_data )
+                                                            size_t i_data )
 {
-    input_attachment_t *a =
-        (input_attachment_t*)malloc( sizeof(input_attachment_t) );
-    if( !a )
+    input_attachment_t *a = (input_attachment_t *)malloc( sizeof (*a) );
+    if( unlikely(a == NULL) )
         return NULL;
+
     a->psz_name = strdup( psz_name ? psz_name : "" );
     a->psz_mime = strdup( psz_mime ? psz_mime : "" );
     a->psz_description = strdup( psz_description ? psz_description : "" );
     a->i_data = i_data;
-    a->p_data = NULL;
-    if( i_data > 0 )
+    a->p_data = malloc( i_data );
+    if( i_data > 0 && likely(p_data != NULL) )
+        memcpy( a->p_data, p_data, i_data );
+
+    if( unlikely(a->psz_name == NULL || a->psz_mime == NULL
+              || a->psz_description == NULL || (i_data > 0 && a->p_data == NULL)) )
     {
-        a->p_data = malloc( i_data );
-        if( a->p_data && p_data )
-            memcpy( a->p_data, p_data, i_data );
+        vlc_input_attachment_Delete( a );
+        a = NULL;
     }
     return a;
 }
+
 static inline input_attachment_t *vlc_input_attachment_Duplicate( const input_attachment_t *a )
 {
     return vlc_input_attachment_New( a->psz_name, a->psz_mime, a->psz_description,
                                      a->p_data, a->i_data );
-}
-static inline void vlc_input_attachment_Delete( input_attachment_t *a )
-{
-    if( !a )
-        return;
-    free( a->psz_name );
-    free( a->psz_mime );
-    free( a->psz_description );
-    free( a->p_data );
-    free( a );
 }
 
 /*****************************************************************************

@@ -356,8 +356,8 @@ void WindowClose(vout_window_t *p_wnd)
             if ([o_vout_dict count] == 1) {
                 NSWindow * o_first_window = [o_vout_dict objectForKey: [[o_vout_dict allKeys] firstObject]];
 
-                NSPoint topleftbase = NSMakePoint(0, [o_first_window frame].size.height);
-                top_left_point = [o_first_window convertBaseToScreen: topleftbase];
+                NSRect topleftBaseRect = NSMakeRect(0, [o_first_window frame].size.height, 0, 0);
+                top_left_point = [o_first_window convertRectToScreen: topleftBaseRect].origin;
             }
 
             top_left_point = [o_new_video_window cascadeTopLeftFromPoint: top_left_point];
@@ -554,13 +554,14 @@ void WindowClose(vout_window_t *p_wnd)
 #pragma mark -
 #pragma mark Misc methods
 
-- (void)updateWindowsControlsBarWithSelector:(SEL)aSel
+- (void)updateControlsBarsUsingBlock:(void (^)(VLCControlsBarCommon *controlsBar))block
 {
     [o_vout_dict enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+
         if ([obj respondsToSelector:@selector(controlsBar)]) {
-            id o_controlsBar = [obj controlsBar];
-            if (o_controlsBar)
-                [o_controlsBar performSelector:aSel];
+            VLCControlsBarCommon *o_controlsBar = [obj controlsBar];
+            if (o_controlsBar && block)
+                block(o_controlsBar);
         }
     }];
 }

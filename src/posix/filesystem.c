@@ -42,27 +42,20 @@
 #endif
 #include <dirent.h>
 #include <sys/socket.h>
+#ifndef O_TMPFILE
+# define O_TMPFILE 0
+#endif
 
 #include <vlc_common.h>
 #include <vlc_fs.h>
-#include "libvlc.h" /* vlc_mkdir */
 
-/**
- * Opens a system file handle.
- *
- * @param filename file path to open (with UTF-8 encoding)
- * @param flags open() flags, see the C library open() documentation
- * @return a file handle on success, -1 on error (see errno).
- * @note Contrary to standard open(), this function returns file handles
- * with the close-on-exec flag enabled.
- */
 int vlc_open (const char *filename, int flags, ...)
 {
     unsigned int mode = 0;
     va_list ap;
 
     va_start (ap, flags);
-    if (flags & O_CREAT)
+    if (flags & (O_CREAT|O_TMPFILE))
         mode = va_arg (ap, unsigned int);
     va_end (ap);
 
@@ -76,23 +69,13 @@ int vlc_open (const char *filename, int flags, ...)
     return fd;
 }
 
-/**
- * Opens a system file handle relative to an existing directory handle.
- *
- * @param dir directory file descriptor
- * @param filename file path to open (with UTF-8 encoding)
- * @param flags open() flags, see the C library open() documentation
- * @return a file handle on success, -1 on error (see errno).
- * @note Contrary to standard open(), this function returns file handles
- * with the close-on-exec flag enabled.
- */
 int vlc_openat (int dir, const char *filename, int flags, ...)
 {
     unsigned int mode = 0;
     va_list ap;
 
     va_start (ap, flags);
-    if (flags & O_CREAT)
+    if (flags & (O_CREAT|O_TMPFILE))
         mode = va_arg (ap, unsigned int);
     va_end (ap);
 
@@ -115,102 +98,79 @@ int vlc_openat (int dir, const char *filename, int flags, ...)
     return fd;
 }
 
+int vlc_mkstemp (char *template)
+{
+    int fd;
 
-/**
- * Creates a directory using UTF-8 paths.
- *
- * @param dirname a UTF-8 string with the name of the directory that you
- *        want to create.
- * @param mode directory permissions
- * @return 0 on success, -1 on error (see errno).
- */
+#ifdef HAVE_MKOSTEMP
+    fd = mkostemp (template, O_CLOEXEC);
+#else
+    fd = mkstemp (template);
+#endif
+    if (fd != -1)
+        fcntl (fd, F_SETFD, FD_CLOEXEC);
+    return fd;
+}
+
+int vlc_memfd (void)
+{
+    int fd;
+#ifdef O_TMPFILE
+    fd = vlc_open ("/tmp", O_RDWR|O_TMPFILE, S_IRUSR|S_IWUSR);
+    if (fd != -1)
+        return fd;
+    /* ENOENT means either /tmp is missing (!) or the kernel does not support
+     * O_TMPFILE. EISDIR means /tmp exists but the kernel does not support
+     * O_TMPFILE. EOPNOTSUPP means the kernel supports O_TMPFILE but the /tmp
+     * filesystem does not. Do not fallback on other errors. */
+    if (errno != ENOENT && errno != EISDIR && errno != EOPNOTSUPP)
+        return -1;
+#endif
+
+    char bufpath[] = "/tmp/"PACKAGE_NAME"XXXXXX";
+
+    fd = vlc_mkstemp (bufpath);
+    if (fd != -1)
+        unlink (bufpath);
+    return fd;
+}
+
 int vlc_mkdir (const char *dirname, mode_t mode)
 {
     return mkdir (dirname, mode);
 }
 
-/**
- * Opens a DIR pointer.
- *
- * @param dirname UTF-8 representation of the directory name
- * @return a pointer to the DIR struct, or NULL in case of error.
- * Release with standard closedir().
- */
 DIR *vlc_opendir (const char *dirname)
 {
     return opendir (dirname);
 }
 
-/**
- * Reads the next file name from an open directory.
- *
- * @param dir directory handle as returned by vlc_opendir()
- *            (must not be used by another thread concurrently)
- *
- * @return a UTF-8 string of the directory entry. The string is valid until
- * the next call to vlc_readdir() or closedir() on the handle.
- * If there are no more entries in the directory, NULL is returned.
- * If an error occurs, errno is set and NULL is returned.
- */
-char *vlc_readdir( DIR *dir )
+const char *vlc_readdir(DIR *dir)
 {
     struct dirent *ent = readdir (dir);
     return (ent != NULL) ? ent->d_name : NULL;
 }
 
-/**
- * Finds file/inode information, as stat().
- * Consider using fstat() instead, if possible.
- *
- * @param filename UTF-8 file path
- */
 int vlc_stat (const char *filename, struct stat *buf)
 {
     return stat (filename, buf);
 }
 
-/**
- * Finds file/inode information, as lstat().
- * Consider using fstat() instead, if possible.
- *
- * @param filename UTF-8 file path
- */
 int vlc_lstat (const char *filename, struct stat *buf)
 {
     return lstat (filename, buf);
 }
 
-/**
- * Removes a file.
- *
- * @param filename a UTF-8 string with the name of the file you want to delete.
- * @return A 0 return value indicates success. A -1 return value indicates an
- *        error, and an error code is stored in errno
- */
 int vlc_unlink (const char *filename)
 {
     return unlink (filename);
 }
 
-/**
- * Moves a file atomically. This only works within a single file system.
- *
- * @param oldpath path to the file before the move
- * @param newpath intended path to the file after the move
- * @return A 0 return value indicates success. A -1 return value indicates an
- *        error, and an error code is stored in errno
- */
 int vlc_rename (const char *oldpath, const char *newpath)
 {
     return rename (oldpath, newpath);
 }
 
-/**
- * Determines the current working directory.
- *
- * @return the current working directory (must be free()'d)
- *         or NULL on error
- */
 char *vlc_getcwd (void)
 {
     long path_max = pathconf (".", _PC_PATH_MAX);
@@ -232,11 +192,6 @@ char *vlc_getcwd (void)
     return NULL;
 }
 
-/**
- * Duplicates a file descriptor. The new file descriptor has the close-on-exec
- * descriptor flag set.
- * @return a new file descriptor or -1
- */
 int vlc_dup (int oldfd)
 {
     int newfd;
@@ -253,9 +208,6 @@ int vlc_dup (int oldfd)
     return newfd;
 }
 
-/**
- * Creates a pipe (see "man pipe" for further reference).
- */
 int vlc_pipe (int fds[2])
 {
 #ifdef HAVE_PIPE2
@@ -273,12 +225,6 @@ int vlc_pipe (int fds[2])
     return 0;
 }
 
-/**
- * Writes data to a file descriptor. Unlike write(), if EPIPE error occurs,
- * this function does not generate a SIGPIPE signal.
- * @note If the file descriptor is known to be neither a pipe/FIFO nor a
- * connection-oriented socket, the normal write() should be used.
- */
 ssize_t vlc_write(int fd, const void *buf, size_t len)
 {
     struct iovec iov = { .iov_base = (void *)buf, .iov_len = len };
@@ -286,10 +232,6 @@ ssize_t vlc_write(int fd, const void *buf, size_t len)
     return vlc_writev(fd, &iov, 1);
 }
 
-/**
- * Writes data from an iovec structure to a file descriptor. Unlike writev(),
- * if EPIPE error occurs, this function does not generate a SIGPIPE signal.
- */
 ssize_t vlc_writev(int fd, const struct iovec *iov, int count)
 {
     sigset_t set, oset;

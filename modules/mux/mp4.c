@@ -37,6 +37,7 @@
 
 #include <vlc_bits.h>
 
+#include <assert.h>
 #include <time.h>
 
 #include <vlc_iso_lang.h>
@@ -45,7 +46,6 @@
 #include "../demux/mpeg/mpeg_parser_helpers.h"
 #include "../demux/mp4/libmp4.h"
 
-#include "assert.h"
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
@@ -277,9 +277,8 @@ static int Open(vlc_object_t *p_this)
             box_fix(box, box->b->i_buffer);
             p_sys->i_pos += box->b->i_buffer;
             p_sys->i_mdat_pos = p_sys->i_pos;
-
-            box_send(p_mux, box);
         }
+        box_send(p_mux, box);
     }
 
     /* FIXME FIXME
@@ -394,7 +393,8 @@ static void Close(vlc_object_t *p_this)
 
     /* Write MOOV header */
     sout_AccessOutSeek(p_mux->p_access, i_moov_pos);
-    box_send(p_mux, moov);
+    if (moov != NULL)
+        box_send(p_mux, moov);
 
 cleanup:
     /* Clean-up */
@@ -1173,7 +1173,7 @@ static void hevcParseVPS(uint8_t * p_buffer, size_t i_buffer, uint8_t *general,
     const size_t i_decoded_nal_size = 512;
     uint8_t p_dec_nal[i_decoded_nal_size];
     size_t i_size = (i_buffer < i_decoded_nal_size)?i_buffer:i_decoded_nal_size;
-    nal_decode(p_buffer, p_dec_nal, i_size);
+    nal_to_rbsp(p_buffer, p_dec_nal, i_size);
 
     /* first two bytes are the NAL header, 3rd and 4th are:
         vps_video_parameter_set_id(4)
@@ -1196,7 +1196,7 @@ static void hevcParseSPS(uint8_t * p_buffer, size_t i_buffer, uint8_t * chroma_i
     const size_t i_decoded_nal_size = 512;
     uint8_t p_dec_nal[i_decoded_nal_size];
     size_t i_size = (i_buffer < i_decoded_nal_size)?i_buffer-2:i_decoded_nal_size;
-    nal_decode(p_buffer+2, p_dec_nal, i_size);
+    nal_to_rbsp(p_buffer+2, p_dec_nal, i_size);
     bs_t bs;
     bs_init(&bs, p_dec_nal, i_size);
 
@@ -2463,7 +2463,8 @@ static void box_gather (bo_t *box, bo_t *box2)
 
 static void box_send(sout_mux_t *p_mux,  bo_t *box)
 {
-    if(box && box->b)
+    assert(box != NULL);
+    if (box->b)
         sout_AccessOutWrite(p_mux->p_access, box->b);
     free(box);
 }
@@ -3033,10 +3034,13 @@ static void CloseFrag(vlc_object_t *p_this)
         if (mfra)
         {
             bo_t *mfro = box_full_new("mfro", 0, 0x0);
-            if (mfro && mfra->b)
+            if (mfro)
             {
-                box_fix(mfra, mfra->b->i_buffer);
-                bo_add_32be(mfro, mfra->b->i_buffer + MP4_MFRO_BOXSIZE);
+                if (mfra->b)
+                {
+                    box_fix(mfra, mfra->b->i_buffer);
+                    bo_add_32be(mfro, mfra->b->i_buffer + MP4_MFRO_BOXSIZE);
+                }
                 box_gather(mfra, mfro);
             }
             box_send(p_mux, mfra);

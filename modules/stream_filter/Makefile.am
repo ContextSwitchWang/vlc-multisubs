@@ -2,11 +2,21 @@ stream_filterdir = $(pluginsdir)/stream_filter
 
 stream_filter_LTLIBRARIES =
 
+libcache_read_plugin_la_SOURCES = stream_filter/cache_read.c
+stream_filter_LTLIBRARIES += libcache_read_plugin.la
+
+libcache_block_plugin_la_SOURCES = stream_filter/cache_block.c
+stream_filter_LTLIBRARIES += libcache_block_plugin.la
+
 libdecomp_plugin_la_SOURCES = stream_filter/decomp.c
 libdecomp_plugin_la_LIBADD = $(LIBPTHREAD)
 if !HAVE_WIN32
 stream_filter_LTLIBRARIES += libdecomp_plugin.la
 endif
+
+libprefetch_plugin_la_SOURCES = stream_filter/prefetch.c
+libprefetch_plugin_la_LIBADD = $(LIBPTHREAD)
+stream_filter_LTLIBRARIES += libprefetch_plugin.la
 
 libsmooth_plugin_la_SOURCES = \
     stream_filter/smooth/smooth.c \
@@ -36,3 +46,9 @@ libaribcam_plugin_la_LDFLAGS = $(AM_LDFLAGS) $(ARIBB25_LDFLAGS) -rpath '$(stream
 libaribcam_plugin_la_LIBADD = $(ARIBB25_LIBS)
 stream_filter_LTLIBRARIES += $(LTLIBaribcam)
 EXTRA_LTLIBRARIES += libaribcam_plugin.la
+
+libaccesstweaks_plugin_la_SOURCES = stream_filter/accesstweaks.c
+libaccesstweaks_plugin_la_CFLAGS = $(AM_CFLAGS)
+libaccesstweaks_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(stream_filterdir)'
+stream_filter_LTLIBRARIES += $(LTLIBaccesstweaks)
+EXTRA_LTLIBRARIES += libaccesstweaks_plugin.la

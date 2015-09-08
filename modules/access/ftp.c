@@ -31,6 +31,7 @@
 #endif
 
 #include <assert.h>
+#include <stdint.h>
 #include <errno.h>
 
 #include <vlc_common.h>
@@ -107,6 +108,7 @@ static ssize_t Read( access_t *, uint8_t *, size_t );
 static int Seek( access_t *, uint64_t );
 static int Control( access_t *, int, va_list );
 static input_item_t* DirRead( access_t * );
+static int DirControl( access_t *, int, va_list );
 #ifdef ENABLE_SOUT
 static int OutSeek( sout_access_out_t *, off_t );
 static ssize_t Write( sout_access_out_t *, block_t * );
@@ -142,6 +144,7 @@ struct access_sys_t
 
     char       sz_epsv_ip[NI_MAXNUMERICHOST];
     bool       out;
+    uint64_t   offset;
     uint64_t   size;
 };
 #define GET_OUT_SYS( p_this ) \
@@ -578,7 +581,7 @@ static int parseURL( vlc_url_t *url, const char *path, enum tls_mode_e mode )
     while( *path == '/' )
         path++;
 
-    vlc_UrlParse( url, path, 0 );
+    vlc_UrlParse( url, path );
 
     if( url->psz_host == NULL || *url->psz_host == '\0' )
         return VLC_EGENERIC;
@@ -631,7 +634,8 @@ static int InOpen( vlc_object_t *p_this )
         return VLC_ENOMEM;
     p_sys->data.fd = -1;
     p_sys->out = false;
-    p_sys->size = 0;
+    p_sys->offset = 0;
+    p_sys->size = UINT64_MAX;
     readTLSMode( p_sys, p_access->psz_access );
 
     if( parseURL( &p_sys->url, p_access->psz_location, p_sys->tlsmode ) )
@@ -668,8 +672,7 @@ static int InOpen( vlc_object_t *p_this )
     if( b_directory )
     {
         p_access->pf_readdir = DirRead;
-        p_access->pf_control = access_vaDirectoryControlHelper;
-        p_access->info.b_dir_can_loop = true;
+        p_access->pf_control = DirControl;
     } else
         ACCESS_SET_CALLBACKS( Read, NULL, Control, Seek ); \
 
@@ -796,12 +799,14 @@ static int _Seek( vlc_object_t *p_access, access_sys_t *p_sys, uint64_t i_pos )
 
 static int Seek( access_t *p_access, uint64_t i_pos )
 {
-    int val = _Seek( (vlc_object_t *)p_access, p_access->p_sys, i_pos );
+    access_sys_t *p_sys = p_access->p_sys;
+
+    int val = _Seek( (vlc_object_t *)p_access, p_sys, i_pos );
     if( val )
         return val;
 
     p_access->info.b_eof = false;
-    p_access->info.i_pos = i_pos;
+    p_sys->offset = i_pos;
 
     return VLC_SUCCESS;
 }
@@ -832,10 +837,10 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     else
         i_read = vlc_recv_i11e( p_sys->data.fd, p_buffer, i_len, 0 );
 
-    if( i_read == 0 )
+    if( i_read > 0 )
+        p_sys->offset += i_read;
+    else if( i_read == 0 )
         p_access->info.b_eof = true;
-    else if( i_read > 0 )
-        p_access->info.i_pos += i_read;
     else if( errno != EINTR && errno != EAGAIN )
     {
         msg_Err( p_access, "receive error: %s", vlc_strerror_c(errno) );
@@ -880,6 +885,21 @@ static input_item_t* DirRead( access_t *p_access )
         free( psz_line );
     }
     return p_item;
+}
+
+static int DirControl( access_t *p_access, int i_query, va_list args )
+{
+    switch( i_query )
+    {
+    case ACCESS_IS_DIRECTORY:
+        *va_arg( args, bool * ) = false; /* is not sorted */
+        *va_arg( args, bool * ) = true; /* might loop */
+        break;
+    default:
+        return access_vaDirectoryControlHelper( p_access, i_query, args );
+    }
+
+    return VLC_SUCCESS;
 }
 
 /*****************************************************************************
@@ -939,6 +959,8 @@ static int Control( access_t *p_access, int i_query, va_list args )
             *pb_bool = true;    /* FIXME */
             break;
         case ACCESS_GET_SIZE:
+            if( p_access->p_sys->size == UINT64_MAX )
+                return VLC_EGENERIC;
             *va_arg( args, uint64_t * ) = p_access->p_sys->size;
             break;
 
@@ -951,7 +973,7 @@ static int Control( access_t *p_access, int i_query, va_list args )
         case ACCESS_SET_PAUSE_STATE:
             pb_bool = (bool*)va_arg( args, bool* );
             if ( !pb_bool )
-              return Seek( p_access, p_access->info.i_pos );
+                 return Seek( p_access, p_access->p_sys->offset );
             break;
 
         default:

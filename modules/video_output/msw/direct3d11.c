@@ -809,6 +809,9 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
 {
     vout_display_sys_t *sys = vd->sys;
 
+    FLOAT blackRGBA[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    ID3D11DeviceContext_ClearRenderTargetView(sys->d3dcontext, sys->d3drenderTargetView, blackRGBA);
+
     /* no ID3D11Device operations should come here */
 
     ID3D11DeviceContext_OMSetRenderTargets(sys->d3dcontext, 1, &sys->d3drenderTargetView, sys->d3ddepthStencilView);
@@ -1171,13 +1174,13 @@ static void UpdatePicQuadPosition(vout_display_t *vd)
     HRESULT hr = IDXGISwapChain_GetPrivateData(sys->dxgiswapChain, &GUID_SWAPCHAIN_WIDTH, &dataSize, &i_width);
     if (FAILED(hr)) {
         msg_Err(vd, "Can't get swapchain width, size %d. (hr=0x%lX)", hr, dataSize);
-        return hr;
+        return;
     }
     dataSize = sizeof(i_height);
     hr = IDXGISwapChain_GetPrivateData(sys->dxgiswapChain, &GUID_SWAPCHAIN_HEIGHT, &dataSize, &i_height);
     if (FAILED(hr)) {
         msg_Err(vd, "Can't get swapchain height, size %d. (hr=0x%lX)", hr, dataSize);
-        return hr;
+        return;
     }
 #endif
 
@@ -1677,7 +1680,7 @@ static int Direct3D11MapSubpicture(vout_display_t *vd, int *subpicture_region_co
     for (subpicture_region_t *r = subpicture->p_region; r; r = r->p_next, i++) {
         for (int j = 0; j < sys->d3dregion_count; j++) {
             picture_t *cache = sys->d3dregions[j];
-            if (((d3d_quad_t *) cache->p_sys)->pTexture) {
+            if (cache != NULL && ((d3d_quad_t *) cache->p_sys)->pTexture) {
                 ID3D11Texture2D_GetDesc( ((d3d_quad_t *) cache->p_sys)->pTexture, &texDesc );
                 if (texDesc.Format == sys->d3dregion_format &&
                     texDesc.Width  == r->fmt.i_visible_width &&
@@ -1741,8 +1744,8 @@ static int Direct3D11MapSubpicture(vout_display_t *vd, int *subpicture_region_co
         picture_CopyPixels(quad_picture, r->p_picture);
 
         /* Map the subpicture to sys->rect_dest */
-        int i_original_width  = subpicture->i_original_picture_width;
-        int i_original_height = subpicture->i_original_picture_height;
+        const int i_original_width  = subpicture->i_original_picture_width;
+        const int i_original_height = subpicture->i_original_picture_height;
 
         const RECT video = sys->rect_dest;
         const float scale_w = (float)(video.right  - video.left) / i_original_width;

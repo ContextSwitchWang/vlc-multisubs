@@ -38,6 +38,7 @@
 #include <vlc_aout.h>
 #include <assert.h>
 #include <limits.h>
+#include "../codec/cc.h"
 
 /*****************************************************************************
  * Module descriptor
@@ -482,6 +483,7 @@ static block_t * MP4_EIA608_Convert( block_t * p_block )
 
     block_Release( p_block );
     p_newblock->i_buffer = i_copied;
+    p_newblock->i_flags = BLOCK_FLAG_ORDERED_CAPTIONS;
     return p_newblock;
 }
 
@@ -1584,8 +1586,14 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
                     char rgsz_location[12];
                     snprintf( rgsz_location, 12, "%4.4s[%"PRIu16"]", (char*)&rgi_pict_atoms[i],
                               (uint16_t) i_box_count - 1 );
-                    (*ppp_attach)[i_count++] = vlc_input_attachment_New( rgsz_location, "image/x-pict",
+                    (*ppp_attach)[i_count] = vlc_input_attachment_New( rgsz_location, "image/x-pict",
                         "Quickdraw image", p_pict->data.p_binary->p_blob, p_pict->data.p_binary->i_blob );
+                    if ( !(*ppp_attach)[i_count] )
+                    {
+                        i_count = 0;
+                        break;
+                    }
+                    i_count++;
                     msg_Dbg( p_demux, "adding attachment %s", rgsz_location );
                 }
             }

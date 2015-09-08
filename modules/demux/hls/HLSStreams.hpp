@@ -24,7 +24,7 @@
 # include "config.h"
 #endif
 
-#include "../adaptative/Streams.hpp"
+#include "../adaptative/plumbing/StreamOutput.hpp"
 
 namespace hls
 {
@@ -42,6 +42,9 @@ namespace hls
             HLSPackedStreamOutput(demux_t *, const StreamFormat &, const std::string &);
             virtual void pushBlock(block_t *, bool); /* reimpl */
             virtual void setPosition(mtime_t); /* reimpl */
+
+        private:
+            bool b_timestamps_offset_set;
     };
 }
 #endif // HLSSTREAMS_HPP

@@ -29,12 +29,14 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include <vlc_common.h>
 #include <vlc_block.h>
 #include <vlc_memory.h>
 #include <vlc_access.h>
 #include <vlc_charset.h>
+#include <vlc_interrupt.h>
 
 #include <libvlc.h>
 #include "stream.h"
@@ -42,7 +44,9 @@
 typedef struct stream_priv_t
 {
     stream_t stream;
+    void (*destroy)(stream_t *);
     block_t *peek;
+    uint64_t offset;
 
     /* UTF-16 and UTF-32 file reading */
     struct {
@@ -55,7 +59,7 @@ typedef struct stream_priv_t
 /**
  * Allocates a VLC stream object
  */
-stream_t *stream_CommonNew(vlc_object_t *parent)
+stream_t *stream_CommonNew(vlc_object_t *parent, void (*destroy)(stream_t *))
 {
     stream_priv_t *priv = vlc_custom_create(parent, sizeof (*priv), "stream");
     if (unlikely(priv == NULL))
@@ -63,8 +67,17 @@ stream_t *stream_CommonNew(vlc_object_t *parent)
 
     stream_t *s = &priv->stream;
 
+    s->p_module = NULL;
     s->psz_url = NULL;
+    s->p_source = NULL;
+    s->pf_read = NULL;
+    s->pf_readdir = NULL;
+    s->pf_control = NULL;
+    s->p_input = NULL;
+    assert(destroy != NULL);
+    priv->destroy = destroy;
     priv->peek = NULL;
+    priv->offset = 0;
 
     /* UTF16 and UTF32 text file conversion */
     priv->text.conv = (vlc_iconv_t)(-1);
@@ -74,10 +87,7 @@ stream_t *stream_CommonNew(vlc_object_t *parent)
     return s;
 }
 
-/**
- * Destroys a VLC stream object
- */
-void stream_CommonDelete( stream_t *s )
+void stream_CommonDelete(stream_t *s)
 {
     stream_priv_t *priv = (stream_priv_t *)s;
 
@@ -88,7 +98,18 @@ void stream_CommonDelete( stream_t *s )
         block_Release(priv->peek);
 
     free(s->psz_url);
-    vlc_object_release( s );
+    vlc_object_release(s);
+}
+
+/**
+ * Destroy a stream
+ */
+void stream_Delete(stream_t *s)
+{
+    stream_priv_t *priv = (stream_priv_t *)s;
+
+    priv->destroy(s);
+    stream_CommonDelete(s);
 }
 
 #undef stream_UrlNew
@@ -100,14 +121,10 @@ stream_t *stream_UrlNew( vlc_object_t *p_parent, const char *psz_url )
     if( !psz_url )
         return NULL;
 
-    access_t *p_access = vlc_access_NewMRL( p_parent, psz_url );
-    if( p_access == NULL )
-    {
+    stream_t *s = stream_AccessNew( p_parent, NULL, psz_url );
+    if( s == NULL )
         msg_Err( p_parent, "no suitable access module for `%s'", psz_url );
-        return NULL;
-    }
-
-    return stream_AccessNew( p_access );
+    return s;
 }
 
 /**
@@ -302,33 +319,48 @@ error:
     return NULL;
 }
 
-/**
- * Reads data from a byte stream.
- *
- * This function always waits for the requested number of bytes, unless a fatal
- * error is encountered or the end-of-stream is reached first.
- *
- * If the buffer is NULL, data is skipped instead of read. This is effectively
- * a relative forward seek, but it works even on non-seekable streams.
- *
- * \param buf start of buffer to read data into [OUT]
- * \param len number of bytes to read
- * \return the number of bytes read or a negative value on error.
- */
+static ssize_t stream_ReadRaw(stream_t *s, void *buf, size_t len)
+{
+    stream_priv_t *priv = (stream_priv_t *)s;
+    size_t copy = 0;
+    ssize_t ret = 0;
+
+    while (len > 0)
+    {
+        if (vlc_killed())
+        {
+            ret = -1;
+            break;
+        }
+
+        ret = s->pf_read(s, buf, len);
+        if (ret <= 0)
+            break;
+
+        assert((size_t)ret <= len);
+        if (buf != NULL)
+            buf = (unsigned char *)buf + ret;
+        len -= ret;
+        copy += ret;
+        priv->offset += ret;
+    }
+
+    return (copy > 0) ? (ssize_t)copy : ret;
+}
+
 ssize_t stream_Read(stream_t *s, void *buf, size_t len)
 {
     stream_priv_t *priv = (stream_priv_t *)s;
     block_t *peek = priv->peek;
     size_t copy = 0;
 
-    if (unlikely(len == 0))
-        return 0;
-
     if (peek != NULL)
     {
         copy = peek->i_buffer < len ? peek->i_buffer : len;
 
-        assert(copy > 0);
+        if (unlikely(len == 0))
+            return 0;
+
         if (buf != NULL)
             memcpy(buf, peek->p_buffer, copy);
 
@@ -347,27 +379,11 @@ ssize_t stream_Read(stream_t *s, void *buf, size_t len)
             return copy;
     }
 
-    ssize_t ret = s->pf_read(s, buf, len);
+    ssize_t ret = stream_ReadRaw(s, buf, len);
     return (ret >= 0) ? (ssize_t)(ret + copy)
                       : ((copy > 0) ? (ssize_t)copy : ret);
 }
 
-/**
- * Peeks at data from a byte stream.
- *
- * This function buffers for the requested number of bytes, waiting if
- * necessary. Then it stores a pointer to the buffer. Unlike stream_Read()
- * or stream_Block(), this function does not modify the stream read offset.
- *
- * \note
- * The buffer remains valid until the next read/peek or seek operation on the
- * same stream. In case of error, the buffer address is undefined.
- *
- * \param bufp storage space for the buffer address [OUT]
- * \param len number of bytes to peek
- * \return the number of bytes actually available (shorter than requested if
- * the end-of-stream is reached), or a negative value on error.
- */
 ssize_t stream_Peek(stream_t *s, const uint8_t **restrict bufp, size_t len)
 {
     stream_priv_t *priv = (stream_priv_t *)s;
@@ -379,20 +395,21 @@ ssize_t stream_Peek(stream_t *s, const uint8_t **restrict bufp, size_t len)
         if (unlikely(peek == NULL))
             return VLC_ENOMEM;
 
+        *bufp = peek->p_buffer;
+
         if (unlikely(len == 0))
         {
-            *bufp = peek->p_buffer;
+            priv->peek = peek;
             return 0;
         }
 
-        ssize_t ret = s->pf_read(s, peek->p_buffer, len);
+        ssize_t ret = stream_ReadRaw(s, peek->p_buffer, len);
         if (ret < 0)
         {
             block_Release(peek);
             return ret;
         }
 
-        *bufp = peek->p_buffer;
         peek->i_buffer = ret;
         priv->peek = peek;
         return ret;
@@ -402,16 +419,14 @@ ssize_t stream_Peek(stream_t *s, const uint8_t **restrict bufp, size_t len)
     {
         size_t avail = peek->i_buffer;
 
-        peek = block_Realloc(peek, 0, len);
-        priv->peek = peek;
+        peek = block_TryRealloc(peek, 0, len);
         if (unlikely(peek == NULL))
-        {
-            s->b_error = true; /* unrecoverable error */
             return VLC_ENOMEM;
-        }
+
+        priv->peek = peek;
         peek->i_buffer = avail;
 
-        ssize_t ret = s->pf_read(s, peek->p_buffer + avail, len - avail);
+        ssize_t ret = stream_ReadRaw(s, peek->p_buffer + avail, len - avail);
         *bufp = peek->p_buffer;
         if (ret >= 0)
             peek->i_buffer += ret;
@@ -421,6 +436,75 @@ ssize_t stream_Peek(stream_t *s, const uint8_t **restrict bufp, size_t len)
     /* Nothing to do */
     *bufp = peek->p_buffer;
     return len;
+}
+
+uint64_t stream_Tell(const stream_t *s)
+{
+    const stream_priv_t *priv = (const stream_priv_t *)s;
+    uint64_t pos = priv->offset;
+
+    if (priv->peek != NULL)
+    {
+        assert(pos >= priv->peek->i_buffer);
+        pos -= priv->peek->i_buffer;
+    }
+
+    return pos;
+}
+
+int stream_Seek(stream_t *s, uint64_t offset)
+{
+    stream_priv_t *priv = (stream_priv_t *)s;
+
+    block_t *peek = priv->peek;
+    if (peek != NULL)
+    {
+        if ((priv->offset - peek->i_buffer) <= offset
+         && offset <= priv->offset)
+        {
+            size_t fwd = offset - (priv->offset - priv->peek->i_buffer);
+            if (fwd <= peek->i_buffer)
+            {   /* Seeking within the peek buffer */
+                peek->p_buffer += fwd;
+                peek->i_buffer -= fwd;
+
+                if (peek->i_buffer == 0)
+                {
+                    priv->peek = NULL;
+                    block_Release(peek);
+                }
+
+                assert(stream_Tell(s) == offset);
+                return VLC_SUCCESS;
+            }
+        }
+    }
+    else
+    {
+        if (priv->offset == offset)
+        {
+            assert(stream_Tell(s) == offset);
+            return VLC_SUCCESS; /* Nothing to do! */
+        }
+    }
+
+    if (s->pf_seek == NULL)
+        return VLC_EGENERIC;
+
+    int ret = s->pf_seek(s, offset);
+    if (ret != VLC_SUCCESS)
+        return ret;
+
+    priv->offset = offset;
+
+    if (peek != NULL)
+    {
+        priv->peek = NULL;
+        block_Release(peek);
+    }
+
+    assert(stream_Tell(s) == offset);
+    return VLC_SUCCESS;
 }
 
 static int stream_ControlInternal(stream_t *s, int cmd, ...)
@@ -445,41 +529,39 @@ int stream_vaControl(stream_t *s, int cmd, va_list args)
 
     switch (cmd)
     {
-        case STREAM_GET_POSITION:
+        case STREAM_SET_TITLE:
+        case STREAM_SET_SEEKPOINT:
         {
-            uint64_t *ppos = va_arg(args, uint64_t *);
+            int ret = s->pf_control(s, cmd, args);
+            if (ret != VLC_SUCCESS)
+                return ret;
 
-            stream_ControlInternal(s, STREAM_GET_POSITION, ppos);
+            priv->offset = 0;
+
             if (priv->peek != NULL)
-            {
-                assert(priv->peek->i_buffer <= *ppos);
-                *ppos -= priv->peek->i_buffer;
-            }
-            return VLC_SUCCESS;
-        }
-
-        case STREAM_SET_POSITION:
-        {
-            uint64_t pos = va_arg(args, uint64_t);
-
-            int ret = stream_ControlInternal(s, STREAM_SET_POSITION, pos);
-            if (ret == VLC_SUCCESS && priv->peek != NULL)
             {
                 block_Release(priv->peek);
                 priv->peek = NULL;
             }
-            return ret;
+            return VLC_SUCCESS;
+        }
+
+        case STREAM_GET_PRIVATE_BLOCK:
+        {
+            block_t **b = va_arg(args, block_t **);
+            bool *eof = va_arg(args, bool *);
+
+            if (priv->peek != NULL)
+            {
+                *b = priv->peek;
+                priv->peek = NULL;
+                *eof = false;
+                return VLC_SUCCESS;
+            }
+            return stream_ControlInternal(s, STREAM_GET_PRIVATE_BLOCK, b, eof);
         }
     }
     return s->pf_control(s, cmd, args);
-}
-
-/**
- * Destroy a stream
- */
-void stream_Delete( stream_t *s )
-{
-    s->pf_destroy( s );
 }
 
 int stream_Control( stream_t *s, int i_query, ... )
@@ -497,27 +579,32 @@ int stream_Control( stream_t *s, int i_query, ... )
 }
 
 /**
- * Read "i_size" bytes and store them in a block_t.
- * It always read i_size bytes unless you are at the end of the stream
- * where it return what is available.
+ * Read data into a block.
+ *
+ * @param s stream to read data from
+ * @param size number of bytes to read
+ * @return a block of data, or NULL on error
+ @ note The block size may be shorter than requested if the end-of-stream was
+ * reached.
  */
-block_t *stream_Block( stream_t *s, int i_size )
+block_t *stream_Block( stream_t *s, size_t size )
 {
-    if( i_size <= 0 ) return NULL;
+    if( unlikely(size > SSIZE_MAX) )
+        return NULL;
 
-    /* emulate block read */
-    block_t *p_bk = block_Alloc( i_size );
-    if( p_bk )
+    block_t *block = block_Alloc( size );
+    if( unlikely(block == NULL) )
+        return NULL;
+
+    ssize_t val = stream_Read( s, block->p_buffer, size );
+    if( val <= 0 )
     {
-        int i_read = stream_Read( s, p_bk->p_buffer, i_size );
-        if( i_read > 0 )
-        {
-            p_bk->i_buffer = i_read;
-            return p_bk;
-        }
-        block_Release( p_bk );
+        block_Release( block );
+        return NULL;
     }
-    return NULL;
+
+    block->i_buffer = val;
+    return block;
 }
 
 /**

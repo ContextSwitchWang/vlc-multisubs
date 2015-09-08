@@ -298,6 +298,14 @@ libadaptative_plugin_la_SOURCES = \
     demux/adaptative/http/HTTPConnectionManager.h \
     demux/adaptative/http/Sockets.hpp \
     demux/adaptative/http/Sockets.cpp \
+    demux/adaptative/plumbing/CommandsQueue.cpp \
+    demux/adaptative/plumbing/CommandsQueue.hpp \
+    demux/adaptative/plumbing/FakeESOut.cpp \
+    demux/adaptative/plumbing/FakeESOut.hpp \
+    demux/adaptative/plumbing/FakeESOutID.cpp \
+    demux/adaptative/plumbing/FakeESOutID.hpp \
+    demux/adaptative/plumbing/StreamOutput.cpp \
+    demux/adaptative/plumbing/StreamOutput.hpp \
     demux/adaptative/PlaylistManager.cpp \
     demux/adaptative/PlaylistManager.h \
     demux/adaptative/SegmentTracker.cpp \
@@ -307,6 +315,7 @@ libadaptative_plugin_la_SOURCES = \
     demux/adaptative/Streams.cpp \
     demux/adaptative/Streams.hpp \
     demux/adaptative/StreamsType.hpp \
+    demux/adaptative/Time.hpp \
     demux/adaptative/tools/Helper.cpp \
     demux/adaptative/tools/Helper.h \
     demux/adaptative/tools/Properties.hpp \

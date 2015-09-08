@@ -283,8 +283,11 @@ static void ReadMetaFromASF( ASF::Tag* tag, demux_meta_t* p_demux_meta, vlc_meta
         else
         {
             if( asprintf( &psz_name, "%i", asfPicture.type() ) == -1 )
-                continue;
+                psz_name = NULL;
         }
+
+        if( unlikely(psz_name == NULL) )
+            continue;
 
         msg_Dbg( p_demux_meta, "Found embedded art: %s (%s) is %u bytes",
                  psz_name, psz_mime, i_data );
@@ -595,6 +598,7 @@ static void ReadMetaFromXiph( Ogg::XiphComment* tag, demux_meta_t* p_demux_meta,
         /* TODO: Use i_cover_score / i_cover_idx to select the picture. */
         p_attachment = ParseFlacPicture( p_data, i_data, 0,
             &i_cover_score, &i_cover_idx );
+        free( p_data );
     }
 
     if (p_attachment) {
@@ -651,10 +655,13 @@ static void ReadMetaFromMP4( MP4::Tag* tag, demux_meta_t *p_demux_meta, vlc_meta
         input_attachment_t *p_attachment =
                 vlc_input_attachment_New( "cover", psz_format, "cover",
                                           list[0].data().data(), list[0].data().size() );
-        TAB_APPEND_CAST( (input_attachment_t**),
-                         p_demux_meta->i_attachments, p_demux_meta->attachments,
-                         p_attachment );
-        vlc_meta_SetArtURL( p_meta, "attachment://cover" );
+        if( p_attachment )
+        {
+            TAB_APPEND_CAST( (input_attachment_t**),
+                             p_demux_meta->i_attachments, p_demux_meta->attachments,
+                             p_attachment );
+            vlc_meta_SetArtURL( p_meta, "attachment://cover" );
+        }
     }
 }
 #endif

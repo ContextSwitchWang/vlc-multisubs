@@ -411,6 +411,9 @@ static void AllocatePluginPath (vlc_object_t *p_this, const char *path,
                 free (cache[i].path);
             }
             free( cache );
+            for (size_t i = 0; i < bank.i_cache; i++)
+                free (bank.cache[i].path);
+            free (bank.cache);
             break;
         case CACHE_RESET:
             CacheSave (p_this, path, bank.cache, bank.i_cache);
@@ -439,7 +442,8 @@ static void AllocatePluginDir (module_bank_t *bank, unsigned maxdepth,
     /* Parse the directory and try to load all files it contains. */
     for (;;)
     {
-        char *file = vlc_readdir (dh), *relpath = NULL, *abspath = NULL;
+        char *relpath = NULL, *abspath = NULL;
+        const char *file = vlc_readdir (dh);
         if (file == NULL)
             break;
 

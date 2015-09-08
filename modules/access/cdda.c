@@ -303,13 +303,11 @@ static block_t *Block( access_t *p_access )
 
         /* Try to skip one sector (in case of bad sectors) */
         p_sys->i_sector++;
-        p_access->info.i_pos += CDDA_DATA_SIZE;
         return NULL;
     }
 
     /* Update a few values */
     p_sys->i_sector += i_blocks;
-    p_access->info.i_pos += p_block->i_buffer;
 
     return p_block;
 }
@@ -324,7 +322,6 @@ static int Seek( access_t *p_access, uint64_t i_pos )
     /* Next sector to read */
     p_sys->i_sector = p_sys->i_first_sector + i_pos / CDDA_DATA_SIZE;
     assert( p_sys->i_sector >= 0 );
-    p_access->info.i_pos = i_pos;
 
     return VLC_SUCCESS;
 }
@@ -475,26 +472,24 @@ static int GetTracks( access_t *p_access, input_item_t *p_current )
     /* Build title table */
     for( int i = 0; i < i_titles; i++ )
     {
-        char *psz_uri, *psz_opt, *psz_name;
+        char *psz_opt, *psz_name;
 
         msg_Dbg( p_access, "track[%d] start=%d", i, p_sys->p_sectors[i] );
 
-        if( asprintf( &psz_uri, "cdda://%s", p_access->psz_location ) == -1 )
-            continue;
-
         /* Define a "default name" */
         if( asprintf( &psz_name, _("Audio CD - Track %02i"), (i+1) ) == -1 )
-            psz_name = psz_uri;
+            psz_name = p_access->psz_url;
 
         /* Create playlist items */
         const mtime_t i_duration = (int64_t)( p_sys->p_sectors[i+1] - p_sys->p_sectors[i] ) *
                                    CDDA_DATA_SIZE * 1000000 / 44100 / 2 / 2;
 
-        input_item_t *p_item = input_item_NewWithType( psz_uri, psz_name, 0,
-                                         NULL, 0, i_duration, ITEM_TYPE_DISC );
-        if( likely(psz_name != psz_uri) )
+        input_item_t *p_item = input_item_NewWithType( p_access->psz_url,
+                                                       psz_name, 0, NULL, 0,
+                                                       i_duration,
+                                                       ITEM_TYPE_DISC );
+        if( likely(psz_name != p_access->psz_url) )
             free( psz_name );
-        free( psz_uri );
 
         if( unlikely(p_item == NULL) )
             continue;
