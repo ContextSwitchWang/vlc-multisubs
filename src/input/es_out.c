@@ -58,11 +58,12 @@
 /*****************************************************************************
  * Local prototypes
  *****************************************************************************/
-typedef struct
+typedef struct dec_list_t
 {
     decoder_t   *p_dec;
     decoder_t   *p_dec_record;
-    dec_list_t  *next;
+    int i_ord;
+    struct dec_list_t  *next;
 } dec_list_t;
 
 typedef struct
@@ -98,8 +99,8 @@ struct es_out_id_t
     es_format_t fmt;
     char        *psz_language;
     char        *psz_language_code;
-    /* A list of Decoders */
-    dec_list_t; 
+    /* A list of Decoders, dec_list must be set to NULL at init*/
+    dec_list_t *p_dec_list;
 
     /* Fields for Video with CC */
     bool  pb_cc_present[4];
@@ -209,6 +210,19 @@ static int LanguageArrayIndex( char **ppsz_langs, const char *psz_lang );
 
 static char *EsOutProgramGetMetaName( es_out_pgrm_t *p_pgrm );
 
+/*
+we don't do mandate that i_ord be unique
+Insert: will overwrite if already exists,
+    return pointer inserted if success, NULL otherwise
+Del: del first node with the right ord,
+    return pointer delelted if successful(which cannot be used anymore), NULL otherwise
+Find: return first pointer if found, NULL otherwise
+ReturnSel: the n th bit indicates the existence of the n th ord track
+*/
+static dec_list_t *DecListInsert( dec_list_t *, decoder_t *, decoder_t *, int );
+static dec_list_t *DecListDel( dec_list_t **, int );
+static dec_list_t *DecListFind( dec_list_t *, int );
+static int DecListReturnSel( dec_list_t * );
 
 
 static const vlc_fourcc_t EsOutFourccClosedCaptions[4] = {
@@ -356,7 +370,7 @@ static void EsOutTerminate( es_out_t *out )
           if( p_sys->es[i]->p_dec[1] )
             input_DecoderDelete( p_sys->es[i]->p_dec[1] );
 
-        
+
         free( p_sys->es[i]->psz_language );
         free( p_sys->es[i]->psz_language_code );
         es_format_Clean( &p_sys->es[i]->fmt );
@@ -440,7 +454,7 @@ static bool EsOutDecodersIsEmpty( es_out_t *out )
              if( es->p_dec[j]  && !input_DecoderIsEmpty( es->p_dec[j] ) )
                 return false;
              if( es->p_dec_record[j] && !input_DecoderIsEmpty( es->p_dec_record[j] ) )
-                return false;        
+                return false;
         }
     }
     return true;
@@ -733,7 +747,7 @@ static void EsOutDecodersChangePause( es_out_t *out, bool b_paused, mtime_t i_da
                 if( es->p_dec_record[j] )
                     input_DecoderChangePause( es->p_dec_record[j], b_paused, i_date );
             }
- 
+
     }
 }
 
@@ -1530,11 +1544,8 @@ static es_out_id_t *EsOutAdd( es_out_t *out, const es_format_t *fmt )
     }
     es->psz_language = LanguageGetName( es->fmt.psz_language ); /* remember so we only need to do it once */
     es->psz_language_code = LanguageGetCode( es->fmt.psz_language );
-    for(int j = 0; j < 2; j++)
-    {
-        es->p_dec[j] = NULL;
-        es->p_dec_record[j] = NULL;
-    }
+
+    es->p_dec_list = NULL;
     for( i = 0; i < 4; i++ )
         es->pb_cc_present[i] = false;
     es->p_master = NULL;
@@ -1577,12 +1588,31 @@ if this function returns wrong value
 static int EsIsSelected( es_out_id_t *es )
 {
     int i_ret = 0;
+    if( es->p_master)
+    {
+            bool b_decode = false;
+            /*the master is video thus can't have a 2nd*/
+            if( es->p_master->p_dec_list && es->p_master->p_dec_list->p_dec)
+            {
+                int i_channel = EsOutGetClosedCaptionsChannel( es->fmt.i_codec );
+                if( i_channel != -1 )
+                    input_DecoderGetCcState( es->p_master->p_dec_list->p_dec, &b_decode, i_channel );
+            }
+            if(b_decode)
+                i_ret += 1;
+
+    }
+    else
+    {
+        i_ret = DecListReturnSel( es->p_dec_list );
+    }
+
+/*
     for(int j = 0; j < 2; j++)
     {
          if( es->p_master )
-        {               
+        {
             bool b_decode = false;
-            /*the master can't have a 2nd*/
             if( es->p_master->p_dec[j] && j == 0)
             {
                 int i_channel = EsOutGetClosedCaptionsChannel( es->fmt.i_codec );
@@ -1595,51 +1625,54 @@ static int EsIsSelected( es_out_id_t *es )
         else
         {
             if( es->p_dec[j])
-               i_ret += 1 << j; 
+               i_ret += 1 << j;
         }
 
-    }
+    }*/
     return i_ret;
 }
 
 /*create as the i_ord th */
 static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es, int i_ord)
 {
-   
+
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
     msg_Dbg( p_input, "creating decoder channel %d as ord %d", p_es->i_channel, i_ord );
 
-    p_es->p_dec[i_ord] = input_DecoderNew( p_input, &p_es->fmt, p_es->p_pgrm->p_clock,
+    decoder_t *p_dec = input_DecoderNew( p_input, &p_es->fmt, p_es->p_pgrm->p_clock,
                                                                      p_input->p->p_sout );
-    if( p_es->p_dec[i_ord] )
+    decoder_t *p_dec_record = NULL;
+    if( p_dec )
     {
-        msg_Dbg( p_input, "creating decoder channel %d as ord %d successful", p_es->i_channel, i_ord );   
+        msg_Dbg( p_input, "creating decoder channel %d as ord %d successful", p_es->i_channel, i_ord );
         if( p_sys->b_buffering )
-            input_DecoderStartWait( p_es->p_dec[i_ord] );
+            input_DecoderStartWait( p_dec );
         msg_Dbg( p_input, "start wait");
+        /* set flag to the decoder */
+        p_dec->fmt_in.subs.i_ord = i_ord;
         if( !p_es->p_master && p_sys->p_sout_record )
-        {   
+        {
             msg_Dbg( p_input, "need to create record");
-            p_es->p_dec_record[i_ord] = input_DecoderNew( p_input, &p_es->fmt, p_es->p_pgrm->p_clock, 
+            p_dec_record = input_DecoderNew( p_input, &p_es->fmt, p_es->p_pgrm->p_clock,
                                                                                 p_sys->p_sout_record );
-            if(p_es->p_dec_record[i_ord])
+            if(p_dec_record)
             {
-                p_es->p_dec_record[i_ord]->fmt_in.subs.i_ord = i_ord;
+                p_dec_record->fmt_in.subs.i_ord = i_ord;
                 if(p_sys->b_buffering )
                 {
                     msg_Dbg( p_input, "dec_record created");
-                    input_DecoderStartWait( p_es->p_dec_record[i_ord] );
+                    input_DecoderStartWait( p_dec_record );
                 }
             }
-            
-        }        
-        p_es->p_dec[i_ord]->fmt_in.subs.i_ord = i_ord;
+
+        }
 
     }
+    DecListInsert(p_es->p_dec_list, p_dec, p_dec_recoder, i_ord );
     msg_Dbg( p_input, "changing delay");
     EsOutDecoderChangeDelay( out, p_es );
-    msg_Dbg( p_input, "change decoder delay channel %d as ord %d successful", p_es->i_channel, i_ord );   
+    msg_Dbg( p_input, "change decoder delay channel %d as ord %d successful", p_es->i_channel, i_ord );
 }
 static void EsCreateDecoderPassByBits( es_out_t *out, es_out_id_t *p_es, int i_cmd )
 {
@@ -1647,26 +1680,40 @@ static void EsCreateDecoderPassByBits( es_out_t *out, es_out_id_t *p_es, int i_c
         if(i_cmd &  (1<<j))
             EsCreateDecoder(out, p_es, j);
 }
-
 static int EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es, int i_ord )
 {
     es_out_sys_t *p_sys = out->p_sys;
-    if( !p_es->p_dec[i_ord] )
+    dec_list_t *p = DecListFind( p_es->p_dec_list, i_ord );
+    if( p == NULL )
+    {
+        /* this ord of track is not found */
         return 0;
+    }
+
     if( p_es != p_sys->p_es_sub[i_ord])
     {
+        /* this case shouldn't be reached
+        'cause p_es shouldn't have the i_ord th decoer
+        when not selected */
         msg_Dbg(p_sys->p_input, "Error, this is other's ord");
         return 0;
     }
-    input_DecoderDelete( p_es->p_dec[i_ord] );
-    p_es->p_dec[i_ord] = NULL;
+    /* in case we don't assign new track
+    this one should be NULL */
     p_sys->p_es_sub[i_ord] = NULL;
-    if( p_es->p_dec_record[i_ord] )
-    {
-        input_DecoderDelete( p_es->p_dec_record[i_ord] );
-        p_es->p_dec_record[i_ord] = NULL;
-    }
+    /* now delete p from the linked list and free memory */
+    DecListDel( &p_es->p_dec_list, i_ord);
     return 1;
+}
+static void EsDestroyDecoderAll( es_out_t *out, es_out_id_t *p_es )
+{
+
+    es_out_sys_t *p_sys = out->p_sys;
+
+    /* now delete p from the linked list and free memory */
+    DecListDel( &p_es->p_dec_list, i_ord);
+    return 1;
+
 }
 /*just a wrapper allow multi destroy*/
 static void EsDestroyDecoderPassByBits(es_out_t *out, es_out_id_t *p_es, int i_cmd )
@@ -1731,7 +1778,7 @@ static void EsSelect( es_out_t *out, es_out_id_t *es, int i_ord )
         }
         msg_Dbg( p_input, "Selecting es channel %d as ord %d", es->i_channel, i_ord );
         EsCreateDecoder( out, es, i_ord );
-        msg_Dbg( p_input,"returned from CreateDecoder"); 
+        msg_Dbg( p_input,"returned from CreateDecoder");
         if( es->p_dec[i_ord] == NULL || es->p_pgrm != p_sys->p_pgrm )
             return;
     }
@@ -1750,7 +1797,7 @@ static void EsUnselectAll( es_out_t *out, es_out_id_t *es, bool b_update)
 {
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
-    int i_ret = 0; 
+    int i_ret = 0;
     if( !(i_ret = EsIsSelected(es)) )
     {
         msg_Warn( p_input, "ES 0x%x is already unselected", es->i_id );
@@ -1776,7 +1823,7 @@ static void EsUnselectAll( es_out_t *out, es_out_id_t *es, bool b_update)
             if( !es->pb_cc_present[i] || !es->pp_cc_es[i] )
                 continue;
 
-            int i_cmd = ( i_spu_id == es->pp_cc_es[i]->i_id ) + 
+            int i_cmd = ( i_spu_id == es->pp_cc_es[i]->i_id ) +
                             ((i_spu2_id == es->pp_cc_es[i]->i_id ) << 1);
                 /* Force unselection of the CC */
             input_SendEventEsSelect( p_input, SPU_ES, -1, i_cmd);
@@ -1784,13 +1831,13 @@ static void EsUnselectAll( es_out_t *out, es_out_id_t *es, bool b_update)
 
             es->pb_cc_present[i] = false;
         }
-        /*destroy whatever it has*/ 
+        /*destroy whatever it has*/
         EsDestroyDecoderPassByBits( out, es, i_ret);
     }
 
     if( !b_update )
         return;
-    
+
     /* Mark it as unselected, all of them, note that i_ret may cause multiple unselect*/
     input_SendEventEsSelect( p_input, es->fmt.i_cat, -1, i_ret);
     if( EsFmtIsTeletext( &es->fmt ) )
@@ -1800,7 +1847,7 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update, int i_ord
 {
     es_out_sys_t   *p_sys = out->p_sys;
     input_thread_t *p_input = p_sys->p_input;
-    int i_ret = EsIsSelected(es); 
+    int i_ret = EsIsSelected(es);
     if( !(i_ret & (1 << i_ord) ) )
     {
         msg_Warn( p_input, "ES 0x%x for ord %d is already unselected", es->i_id, i_ord );
@@ -1835,13 +1882,13 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update, int i_ord
 
             es->pb_cc_present[i] = false;
         }
-        /*destroy decoder*/ 
+        /*destroy decoder*/
         EsDestroyDecoder( out, es, i_ord);
     }
 
     if( !b_update )
         return;
-    
+
     /* Mark it as unselected, beware the format of param */
     input_SendEventEsSelect( p_input, es->fmt.i_cat, -1, 1 << i_ord);
     if( EsFmtIsTeletext( &es->fmt ) )
@@ -1914,7 +1961,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
     else if( p_sys->i_mode == ES_OUT_MODE_AUTO )
     {
         int i_wanted  = -1;
-         msg_Dbg(p_sys->p_input, "EsOutSelect auto ord %d channel %d", 
+         msg_Dbg(p_sys->p_input, "EsOutSelect auto ord %d channel %d",
                 i_ord, es->i_channel);
         if( es->p_pgrm != p_sys->p_pgrm )
             return;
@@ -1945,7 +1992,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
             }
             else
             {
-                /* Select the first one if there is no selected audio yet 
+                /* Select the first one if there is no selected audio yet
                  * then choose by ES priority */
                 if( !p_sys->p_es_audio ||
                     p_sys->p_es_audio->fmt.i_priority < es->fmt.i_priority )
@@ -1973,7 +2020,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
                 {
                     /* Select the language if it's in the list */
                     if( es_idx >= 0 ||
-                        /*FIXME: Should default subtitle not in the list be 
+                        /*FIXME: Should default subtitle not in the list be
                          * displayed if not forbidden by none? */
                         ( p_sys->i_default_sub_id >= 0 &&
                           /* check if the subtitle isn't forbidden by none */
@@ -2006,12 +2053,12 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
             }
             else
             {
-                /* If there is no user preference, select the default subtitle 
+                /* If there is no user preference, select the default subtitle
                  * or adapt by ES priority */
                 if( ( !p_sys->p_es_sub[i_ord] &&
                       ( p_sys->i_default_sub_id >= 0 &&
                         es->i_id == p_sys->i_default_sub_id ) ) ||
-                    ( p_sys->p_es_sub[i_ord] && 
+                    ( p_sys->p_es_sub[i_ord] &&
                       p_sys->p_es_sub[i_ord]->fmt.i_priority < es->fmt.i_priority ) )
                     i_wanted = es->i_channel;
                 else if( p_sys->p_es_sub[i_ord] &&
@@ -2029,7 +2076,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
                 else
                     return;
             }
-            msg_Dbg(p_sys->p_input, "EsOutSelect ord %d channel %d wanted %d", 
+            msg_Dbg(p_sys->p_input, "EsOutSelect ord %d channel %d wanted %d",
                 i_ord, es->i_channel, i_wanted );
         }
         else if( i_cat == VIDEO_ES )
@@ -2053,7 +2100,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
                 EsIsSelected( p_sys->p_es_audio ) & (1 << i_ord))
             {
                 EsUnselect( out, p_sys->p_es_audio, false, i_ord );
-            }               
+            }
              msg_Dbg(p_sys->p_input, "Using new audio stuff");
             p_sys->p_es_audio = es;
         }
@@ -2068,7 +2115,7 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force, int i_ord
                 EsUnselect( out, p_sys->p_es_sub[i_ord], false, i_ord );
             }
             if(p_sys->p_es_sub[i_ord] != NULL)
-                            msg_Dbg(p_sys->p_input, "The previous one is not deselected");                
+                            msg_Dbg(p_sys->p_input, "The previous one is not deselected");
             msg_Dbg(p_sys->p_input, "Set es officially for ord %d", i_ord);
             p_sys->p_es_sub[i_ord] = es; /*every time use this, make sure previous sub is released*/
         }
@@ -2126,7 +2173,7 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         if( i_date < p_sys->i_preroll_end )
             p_block->i_flags |= BLOCK_FLAG_PREROLL;
     }
-    /*at least one of them is not null, then we proceed*/
+    /*at least one of them is not NULL, then we proceed*/
     if( !(es->p_dec[0] || es->p_dec[1]))
     {
         block_Release( p_block );
@@ -2155,7 +2202,7 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
 
     /* Decode */
     for(int j = 0; j < 2; j ++)
-    { 
+    {
         if( es->p_dec_record[j] )
         {
             msg_Dbg(p_input, "decoding Record..");
@@ -2191,7 +2238,7 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
                          p_input->p->b_out_pace_control );
         msg_Dbg(p_input, "decoded a 2nd");
     }
-        
+
 
     es_format_t fmt_dsc;
     vlc_meta_t  *p_meta_dsc;
@@ -2210,8 +2257,8 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         msg_Dbg(p_input, "status updated");
 
     if(es->p_dec[0])
-    {   
-        
+    {
+
         /* Check CC status */
         bool pb_cc[4];
         input_DecoderIsCcPresent( es->p_dec[0], pb_cc );
@@ -2343,7 +2390,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
 static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
 {
     es_out_sys_t *p_sys = out->p_sys;
-    
+
     switch( i_query )
     {
     case ES_OUT_SET_ES_STATE:
@@ -2444,14 +2491,14 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
             i_cat = -1;
         msg_Dbg(p_sys->p_input, "ES_OUT_SET_ES cat %d ord %d", i_cat, i_ord);
         for( int i = 0; i < p_sys->i_es; i++ )
-        {   
-            
+        {
+
             if( i_cat == -1 )
             {
                 if( es == p_sys->es[i] )
                 {
                     if( i_query == ES_OUT_RESTART_ES)
-                    {   
+                    {
                         /*alway restart 2nd sub together*/
                         msg_Dbg(p_sys->p_input, "ES_OUT_RESTART_ES channel %d", es->i_channel);
                         EsRestartAllDecoder(out, p_sys->es[i]);
@@ -2505,7 +2552,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
         {
             if( es->fmt.i_cat == SPU_ES )
                 p_sys->i_default_sub_id = es->i_id;
-            return VLC_SUCCESS; 
+            return VLC_SUCCESS;
         }
         if( es == NULL )
         {
@@ -3263,3 +3310,87 @@ static void EsOutUpdateInfo( es_out_t *out, es_out_id_t *es, const es_format_t *
     /* */
     input_Control( p_input, INPUT_REPLACE_INFOS, p_cat );
 }
+
+static dec_list_t *DecListInsert( dec_list_t *head, decoder_t *p_dec, decoder_t *p_dec_record, int i_ord)
+{
+    dec_list_t *p_dec_list = malloc( sizeof(dec_list_t) );
+    if( p_dec_list == NULL)
+    {
+        /*alloc memory failed*/
+        return NULL;
+    }
+    /* to be inserted the fields shouldn't all be NULL */
+    p_dec_list->p_dec = p_dec;
+    p_dec_list->p_dec_record = p_dec_record;
+    p_dec_list->i_ord = i_ord;
+
+    /* insert it into the list */
+    p_dec_list->next = head->next;
+    head->next = p_dec_list;
+    /* return inserted pointer */
+    return p_dec_list;
+}
+
+static dec_list_t *DecListDel( dec_list_t **head, int i_ord)
+{
+   if( head == NULL)
+   {
+        /* input invalid */
+        return NULL;
+   }
+    /* try to find i_ord */
+   dec_list_t **pp = head;
+   dec_list_t *p = NULL;
+   while(*pp)
+   {
+        if( (*pp)->i_ord == i_ord )
+        {
+            p = (*pp);
+            /* bypass p now in the list */
+            *pp = p->next;
+            /* Caveat: free the decoders first to avoid leak
+            but don't free it again */
+
+            input_DecoderDelete( p->p_dec );
+            if( p->p_dec_record )
+            {
+                input_DecoderDelete( p->p_dec_record );
+            }
+            free( p );
+            /* we only return the first one found */
+            return p;
+        }
+        else
+        {
+            pp = &((*pp)->next);
+        }
+   }
+    /* doesn't exist */
+   return NULL;
+
+}
+static int DecListReturnSel( dec_list_t *head )
+{
+
+   int i_ret = 0;
+   dec_list_t *p = head;
+   for(; p; p = p->next)
+   {
+        /* set bits */
+        i_ret += 1 << p->i_ord;
+   }
+   return i_ret;
+}
+static dec_list_t *DecListFind( dec_list_t *head, int i_ord)
+{
+   dec_list_t *p = head;
+   for(; p; p = p->next)
+   {
+      if(p->i_ord == i_ord)
+      {
+          return p;
+      }
+   }
+   return NULL;
+}
+
