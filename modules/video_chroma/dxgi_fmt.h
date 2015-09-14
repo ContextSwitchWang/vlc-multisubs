@@ -1,10 +1,9 @@
 /*****************************************************************************
- * android_opaque.c: shared structures between MediaCodec decoder
- * and MediaCodec video output
+ * d3d11_surface.c : DXGI helper calls
  *****************************************************************************
- * Copyright (C) 2013 Felix Abecassis
+ * Copyright © 2015 VLC authors, VideoLAN and VideoLabs
  *
- * Authors: Felix Abecassis <felix.abecassis@gmail.com>
+ * Authors: Steve Lhomme <robux4@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published by
@@ -21,10 +20,24 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
-#include "android_opaque.h"
+#ifndef _VLC_VIDEOCHROMA_DXGI_H
+#define _VLC_VIDEOCHROMA_DXGI_H 1
 
-vlc_mutex_t* get_android_opaque_mutex()
+#include <dxgiformat.h>
+
+#include <vlc_common.h>
+#include <vlc_fourcc.h>
+
+typedef struct
 {
-    static vlc_mutex_t s_mutex = VLC_STATIC_MUTEX;
-    return &s_mutex;
-}
+    const char   *name;
+    DXGI_FORMAT  formatTexture;
+    vlc_fourcc_t fourcc;
+    DXGI_FORMAT  formatY;
+    DXGI_FORMAT  formatUV;
+} d3d_format_t;
+
+extern const char *DxgiFormatToStr(DXGI_FORMAT format);
+extern const d3d_format_t *GetRenderFormatList(void);
+
+#endif /* _VLC_VIDEOCHROMA_DXGI_H */

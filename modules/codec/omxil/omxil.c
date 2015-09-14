@@ -45,7 +45,6 @@
 #if defined(USE_IOMX)
 #include <dlfcn.h>
 #include <jni.h>
-#include "android_opaque.h"
 #include "../../video_output/android/android_window.h"
 #endif
 
@@ -91,7 +90,7 @@ static OMX_ERRORTYPE OmxFillBufferDone( OMX_HANDLETYPE, OMX_PTR,
 
 #if defined(USE_IOMX)
 static void *DequeueThread( void *data );
-static void UnlockPicture( picture_t* p_pic, bool b_render );
+static void ReleasePicture( decoder_t *p_dec, unsigned int i_index, bool b_render );
 static void HwBuffer_Init( decoder_t *p_dec, OmxPort *p_port );
 static void HwBuffer_Destroy( decoder_t *p_dec, OmxPort *p_port );
 static int  HwBuffer_AllocateBuffers( decoder_t *p_dec, OmxPort *p_port );
@@ -106,10 +105,10 @@ static void HwBuffer_SetCrop( decoder_t *p_dec, OmxPort *p_port,
 static void HwBuffer_ChangeState( decoder_t *p_dec, OmxPort *p_port,
                                   int i_index, int i_state );
 
-#define HWBUFFER_LOCK() vlc_mutex_lock( get_android_opaque_mutex() )
-#define HWBUFFER_UNLOCK() vlc_mutex_unlock( get_android_opaque_mutex() )
+#define HWBUFFER_LOCK(p_port) vlc_mutex_lock( &(p_port)->p_hwbuf->lock )
+#define HWBUFFER_UNLOCK(p_port) vlc_mutex_unlock( &(p_port)->p_hwbuf->lock )
 #define HWBUFFER_WAIT(p_port) vlc_cond_wait( &(p_port)->p_hwbuf->wait, \
-                                              get_android_opaque_mutex() )
+                                             &(p_port)->p_hwbuf->lock )
 #define HWBUFFER_BROADCAST(p_port) vlc_cond_broadcast( &(p_port)->p_hwbuf->wait )
 
 #else
@@ -127,8 +126,8 @@ static inline int HwBuffer_dummy( )
 #define HwBuffer_GetPic(p_dec, p_port, pp_pic) HwBuffer_dummy()
 #define HwBuffer_SetCrop(p_dec, p_port, p_rect) do { } while (0)
 
-#define HWBUFFER_LOCK() do { } while (0)
-#define HWBUFFER_UNLOCK() do { } while (0)
+#define HWBUFFER_LOCK(p_port) do { } while (0)
+#define HWBUFFER_UNLOCK(p_port) do { } while (0)
 #define HWBUFFER_WAIT(p_port) do { } while (0)
 #define HWBUFFER_BROADCAST(p_port) do { } while (0)
 #endif
@@ -635,7 +634,7 @@ static OMX_ERRORTYPE GetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
                     strlen("OMX.qcom.video.decoder")))
             def->format.video.eColorFormat = OMX_QCOM_COLOR_FormatYVU420SemiPlanar;
 
-        if (IgnoreOmxDecoderPadding(p_sys->psz_component)) {
+        if ((p_sys->i_quirks & OMXCODEC_VIDEO_QUIRKS_IGNORE_PADDING)) {
             def->format.video.nSliceHeight = 0;
             def->format.video.nStride = p_fmt->video.i_width;
         }
@@ -821,6 +820,7 @@ static OMX_ERRORTYPE InitialiseComponent(decoder_t *p_dec,
     OMX_HANDLETYPE omx_handle;
     OMX_ERRORTYPE omx_error;
     unsigned int i;
+    int i_quirks;
     OMX_U8 psz_role[OMX_MAX_STRINGNAME_SIZE];
     OMX_PARAM_COMPONENTROLETYPE role;
     OMX_PARAM_PORTDEFINITIONTYPE definition;
@@ -835,6 +835,17 @@ static OMX_ERRORTYPE InitialiseComponent(decoder_t *p_dec,
         return omx_error;
     }
     strncpy(p_sys->psz_component, psz_component, OMX_MAX_STRINGNAME_SIZE-1);
+    i_quirks = OMXCodec_GetQuirks(p_dec->fmt_in.i_cat,
+                                  p_sys->b_enc ? p_dec->fmt_out.i_codec : p_dec->fmt_in.i_codec,
+                                  p_sys->psz_component,
+                                  strlen(p_sys->psz_component));
+    if ((i_quirks & OMXCODEC_QUIRKS_NEED_CSD)
+      && !p_dec->fmt_in.i_extra)
+    {
+        /* TODO handle late configuration */
+        msg_Warn( p_dec, "codec need CSD" );
+        return OMX_ErrorUndefined;
+    }
 
     omx_error = OMX_ComponentRoleEnum(omx_handle, psz_role, 0);
     if(omx_error == OMX_ErrorNone)
@@ -976,6 +987,7 @@ static OMX_ERRORTYPE InitialiseComponent(decoder_t *p_dec,
         }
     }
 
+    p_sys->i_quirks = i_quirks;
     *p_handle = omx_handle;
     return OMX_ErrorNone;
 
@@ -1235,8 +1247,6 @@ static int OpenGeneric( vlc_object_t *p_this, bool b_encode )
     PrintOmx(p_dec, p_sys->omx_handle, p_dec->p_sys->out.i_port_index);
 
     if(p_sys->b_error) goto error;
-
-    p_dec->b_need_packetized = true;
 
     if (!p_sys->b_use_pts)
         msg_Dbg( p_dec, "using dts timestamp mode for %s", p_sys->psz_component);
@@ -1598,11 +1608,8 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
             if (invalid_picture) {
                 invalid_picture->date = VLC_TS_INVALID;
                 picture_sys_t *p_picsys = invalid_picture->p_sys;
-                p_picsys->pf_lock_pic = NULL;
-                p_picsys->pf_unlock_pic = NULL;
                 p_picsys->priv.hw.p_dec = NULL;
                 p_picsys->priv.hw.i_index = -1;
-                p_picsys->priv.hw.b_valid = false;
             } else {
                 /* If we cannot return a picture we must free the
                    block since the decoder will proceed with the
@@ -2039,6 +2046,7 @@ static void HwBuffer_Init( decoder_t *p_dec, OmxPort *p_port )
     {
         goto error;
     }
+    vlc_mutex_init (&p_port->p_hwbuf->lock);
     vlc_cond_init (&p_port->p_hwbuf->wait);
 
     p_port->p_hwbuf->p_awh = AWindowHandler_new( VLC_OBJECT( p_dec ) );
@@ -2109,6 +2117,7 @@ static void HwBuffer_Destroy( decoder_t *p_dec, OmxPort *p_port )
         }
 
         vlc_cond_destroy( &p_port->p_hwbuf->wait );
+        vlc_mutex_destroy( &p_port->p_hwbuf->lock );
         free( p_port->p_hwbuf );
         p_port->p_hwbuf = NULL;
     }
@@ -2225,7 +2234,7 @@ static int HwBuffer_AllocateBuffers( decoder_t *p_dec, OmxPort *p_port )
         goto error;
 
     p_port->p_hwbuf->inflight_picture = calloc( p_port->p_hwbuf->i_buffers,
-                                                sizeof(picture_t*) );
+                                                sizeof(picture_sys_t*) );
     if( !p_port->p_hwbuf->inflight_picture )
         goto error;
 
@@ -2265,7 +2274,7 @@ static int HwBuffer_FreeBuffers( decoder_t *p_dec, OmxPort *p_port )
 {
     msg_Dbg( p_dec, "HwBuffer_FreeBuffers");
 
-    HWBUFFER_LOCK();
+    HWBUFFER_LOCK( p_port );
 
     p_port->p_hwbuf->b_run = false;
 
@@ -2284,7 +2293,7 @@ static int HwBuffer_FreeBuffers( decoder_t *p_dec, OmxPort *p_port )
     }
     HWBUFFER_BROADCAST( p_port );
 
-    HWBUFFER_UNLOCK();
+    HWBUFFER_UNLOCK( p_port );
 
     p_port->p_hwbuf->i_buffers = 0;
 
@@ -2308,7 +2317,7 @@ static int HwBuffer_Start( decoder_t *p_dec, OmxPort *p_port )
     OMX_BUFFERHEADERTYPE *p_header;
 
     msg_Dbg( p_dec, "HwBuffer_Start" );
-    HWBUFFER_LOCK();
+    HWBUFFER_LOCK( p_port );
 
     /* fill all owned buffers dequeued by HwBuffer_AllocatesBuffers */
     for(unsigned int i = 0; i < p_port->p_hwbuf->i_buffers; i++)
@@ -2321,7 +2330,7 @@ static int HwBuffer_Start( decoder_t *p_dec, OmxPort *p_port )
                                                p_header->pBuffer ) != 0 )
             {
                 msg_Err( p_dec, "lock failed" );
-                HWBUFFER_UNLOCK();
+                HWBUFFER_UNLOCK( p_port );
                 return -1;
             }
             OMX_DBG( "FillThisBuffer %p, %p", p_header, p_header->pBuffer );
@@ -2334,11 +2343,11 @@ static int HwBuffer_Start( decoder_t *p_dec, OmxPort *p_port )
                    DequeueThread, p_dec, VLC_THREAD_PRIORITY_LOW ) )
     {
         p_port->p_hwbuf->b_run = false;
-        HWBUFFER_UNLOCK();
+        HWBUFFER_UNLOCK( p_port );
         return -1;
     }
 
-    HWBUFFER_UNLOCK();
+    HWBUFFER_UNLOCK( p_port );
 
     return 0;
 }
@@ -2353,26 +2362,17 @@ static int HwBuffer_Stop( decoder_t *p_dec, OmxPort *p_port )
     VLC_UNUSED( p_dec );
 
     msg_Dbg( p_dec, "HwBuffer_Stop" );
-    HWBUFFER_LOCK();
+    HWBUFFER_LOCK( p_port );
 
     p_port->p_hwbuf->b_run = false;
 
     /* invalidate and release all inflight pictures */
     if( p_port->p_hwbuf->inflight_picture ) {
         for( unsigned int i = 0; i < p_port->i_buffers; ++i ) {
-            picture_t *p_pic = p_port->p_hwbuf->inflight_picture[i];
-            if( p_pic ) {
-                picture_sys_t *p_picsys = p_pic->p_sys;
-                if( p_picsys ) {
-                    void *p_handle = p_port->pp_buffers[p_picsys->priv.hw.i_index]->pBuffer;
-                    if( p_handle )
-                    {
-                        p_port->p_hwbuf->anwpriv->cancel( p_port->p_hwbuf->window_priv, p_handle );
-                        HwBuffer_ChangeState( p_dec, p_port, p_picsys->priv.hw.i_index,
-                                              BUF_STATE_NOT_OWNED );
-                    }
-                    p_picsys->priv.hw.b_valid = false;
-                }
+            picture_sys_t *p_picsys = p_port->p_hwbuf->inflight_picture[i];
+            if( p_picsys )
+            {
+                AndroidOpaquePicture_DetachDecoder(p_picsys);
                 p_port->p_hwbuf->inflight_picture[i] = NULL;
             }
         }
@@ -2380,7 +2380,7 @@ static int HwBuffer_Stop( decoder_t *p_dec, OmxPort *p_port )
 
     HWBUFFER_BROADCAST( p_port );
 
-    HWBUFFER_UNLOCK();
+    HWBUFFER_UNLOCK( p_port );
 
     return 0;
 }
@@ -2439,15 +2439,11 @@ static int HwBuffer_GetPic( decoder_t *p_dec, OmxPort *p_port,
     p_pic->date = FromOmxTicks( p_header->nTimeStamp );
 
     p_picsys = p_pic->p_sys;
-    p_picsys->pf_lock_pic = NULL;
-    p_picsys->pf_unlock_pic = UnlockPicture;
-    p_picsys->priv.hw.p_dec = p_dec;
     p_picsys->priv.hw.i_index = i_index;
-    p_picsys->priv.hw.b_valid = true;
+    p_picsys->priv.hw.p_dec = p_dec;
+    p_picsys->priv.hw.pf_release = ReleasePicture;
 
-    HWBUFFER_LOCK();
-    p_port->p_hwbuf->inflight_picture[i_index] = p_pic;
-    HWBUFFER_UNLOCK();
+    p_port->p_hwbuf->inflight_picture[i_index] = p_picsys;
 
     *pp_pic = p_pic;
     OMX_FIFO_GET( &p_port->fifo, p_header );
@@ -2482,7 +2478,7 @@ static void *DequeueThread( void *data )
     OMX_BUFFERHEADERTYPE *p_header;
 
     msg_Dbg( p_dec, "DequeueThread running");
-    HWBUFFER_LOCK();
+    HWBUFFER_LOCK( p_port );
     while( p_port->p_hwbuf->b_run )
     {
         while( p_port->p_hwbuf->b_run &&
@@ -2491,7 +2487,7 @@ static void *DequeueThread( void *data )
 
         if( !p_port->p_hwbuf->b_run ) continue;
 
-        HWBUFFER_UNLOCK();
+        HWBUFFER_UNLOCK( p_port );
 
 
         /* The thread can be stuck here. It shouldn't happen since we make sure
@@ -2501,7 +2497,7 @@ static void *DequeueThread( void *data )
         if( err == 0 )
             err = p_port->p_hwbuf->anwpriv->lock( p_port->p_hwbuf->window_priv, p_handle );
 
-        HWBUFFER_LOCK();
+        HWBUFFER_LOCK( p_port );
 
         if( err != 0 ) {
             if( err != -EBUSY )
@@ -2537,7 +2533,7 @@ static void *DequeueThread( void *data )
 
         HWBUFFER_BROADCAST( p_port );
     }
-    HWBUFFER_UNLOCK();
+    HWBUFFER_UNLOCK( p_port );
 
     msg_Dbg( p_dec, "DequeueThread stopped");
     return NULL;
@@ -2546,25 +2542,15 @@ static void *DequeueThread( void *data )
 /*****************************************************************************
  * vout callbacks
  *****************************************************************************/
-static void UnlockPicture( picture_t* p_pic, bool b_render )
+static void ReleasePicture( decoder_t *p_dec, unsigned int i_index,
+                            bool b_render )
 {
-    picture_sys_t *p_picsys = p_pic->p_sys;
-    decoder_t *p_dec = p_picsys->priv.hw.p_dec;
     decoder_sys_t *p_sys = p_dec->p_sys;
     OmxPort *p_port = &p_sys->out;
     void *p_handle;
 
-    if( !p_picsys->priv.hw.b_valid ) return;
-
-    HWBUFFER_LOCK();
-
-    /* Picture might have been invalidated while waiting on the mutex. */
-    if (!p_picsys->priv.hw.b_valid) {
-        HWBUFFER_UNLOCK();
-        return;
-    }
-
-    p_handle = p_port->pp_buffers[p_picsys->priv.hw.i_index]->pBuffer;
+    HWBUFFER_LOCK( p_port );
+    p_handle = p_port->pp_buffers[i_index]->pBuffer;
 
     OMX_DBG( "DisplayBuffer: %s %p",
              b_render ? "render" : "cancel", p_handle );
@@ -2580,16 +2566,12 @@ static void UnlockPicture( picture_t* p_pic, bool b_render )
     else
         p_port->p_hwbuf->anwpriv->cancel( p_port->p_hwbuf->window_priv, p_handle );
 
-    HwBuffer_ChangeState( p_dec, p_port, p_picsys->priv.hw.i_index, BUF_STATE_NOT_OWNED );
+    HwBuffer_ChangeState( p_dec, p_port, i_index, BUF_STATE_NOT_OWNED );
     HWBUFFER_BROADCAST( p_port );
 
-    p_port->p_hwbuf->inflight_picture[p_picsys->priv.hw.i_index] = NULL;
-
 end:
-    p_picsys->priv.hw.b_valid = false;
-    p_picsys->priv.hw.i_index = -1;
 
-    HWBUFFER_UNLOCK();
+    HWBUFFER_UNLOCK( p_port );
 }
 
 #endif // USE_IOMX

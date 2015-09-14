@@ -35,7 +35,7 @@ AtomsReader::~AtomsReader()
     while(rootbox && rootbox->p_first)
     {
         MP4_Box_t *p_next = rootbox->p_first->p_next;
-        MP4_BoxFree( (stream_t *)object, rootbox->p_first );
+        MP4_BoxFree( rootbox->p_first );
         rootbox->p_first = p_next;
     }
     delete rootbox;
@@ -58,7 +58,7 @@ bool AtomsReader::parseBlock(block_t *p_block, BaseRepresentation *rep)
         memset(rootbox, 0, sizeof(*rootbox));
         rootbox->i_type = ATOM_root;
         rootbox->i_size = p_block->i_buffer;
-        if ( MP4_ReadBoxContainerChildren( stream, rootbox, 0 ) == 1 )
+        if ( MP4_ReadBoxContainerChildren( stream, rootbox, NULL ) == 1 )
         {
 #ifndef NDEBUG
             MP4_BoxDumpStructure(stream, rootbox);

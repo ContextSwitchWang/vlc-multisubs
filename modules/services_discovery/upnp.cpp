@@ -543,7 +543,7 @@ MediaServer::~MediaServer()
 input_item_t* MediaServer::newItem(const char *objectID, const char *title )
 {
     vlc_url_t url;
-    vlc_UrlParse( &url, url_.c_str(), '?' );
+    vlc_UrlParse( &url, url_.c_str() );
     char* psz_url;
 
     if (asprintf( &psz_url, "upnp://%s://%s:%u%s?ObjectID=%s", url.psz_protocol,
@@ -673,7 +673,7 @@ void MediaServer::fetchContents()
 {
     const char* objectID = "";
     vlc_url_t url;
-    vlc_UrlParse( &url, access_->psz_location, '?');
+    vlc_UrlParse( &url, access_->psz_location );
 
     if ( url.psz_option && !strncmp( url.psz_option, "ObjectID=", strlen( "ObjectID=" ) ) )
     {
@@ -813,6 +813,21 @@ static input_item_t* ReadDirectory( access_t *p_access )
     return p_access->p_sys->p_server->getNextItem();
 }
 
+static int ControlDirectory( access_t *p_access, int i_query, va_list args )
+{
+    switch( i_query )
+    {
+    case ACCESS_IS_DIRECTORY:
+        *va_arg( args, bool * ) = true; /* is sorted */
+        *va_arg( args, bool * ) = true; /* might loop */
+        break;
+    default:
+        return access_vaDirectoryControlHelper( p_access, i_query, args );
+    }
+
+    return VLC_SUCCESS;
+}
+
 static int Open( vlc_object_t *p_this )
 {
     access_t* p_access = (access_t*)p_this;
@@ -837,9 +852,7 @@ static int Open( vlc_object_t *p_this )
     }
 
     p_access->pf_readdir = ReadDirectory;
-    p_access->pf_control = access_vaDirectoryControlHelper;
-    p_access->info.b_dir_sorted = true;
-    p_access->info.b_dir_can_loop = true;
+    p_access->pf_control = ControlDirectory;
 
     return VLC_SUCCESS;
 }

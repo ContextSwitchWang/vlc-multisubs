@@ -1,14 +1,11 @@
-/*****************************************************************************
- * android_opaque.h: shared structures between MediaCodec decoder
- * and MediaCodec video output
+/*
+ * FakeESOutID.hpp
  *****************************************************************************
- * Copyright (C) 2013 Felix Abecassis
- *
- * Authors: Felix Abecassis <felix.abecassis@gmail.com>
+ * Copyright © 2015 VideoLAN and VLC Authors
  *
  * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2.1 of the License, or
+ * under the terms of the GNU Lesser General Public License as published
+ * by the Free Software Foundation; either version 2.1 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -20,16 +17,36 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
-
-#ifndef ANDROID_OPAQUE_H_
-#define ANDROID_OPAQUE_H_
+#ifndef FAKEESOUTID_HPP
+#define FAKEESOUTID_HPP
 
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
 
 #include <vlc_common.h>
+#include <vlc_es.h>
 
-vlc_mutex_t* get_android_opaque_mutex(void);
+namespace adaptative
+{
+    class FakeESOut;
 
-#endif
+    class FakeESOutID
+    {
+        public:
+            FakeESOutID( FakeESOut *, const es_format_t * );
+            ~FakeESOutID();
+            void setRealESID( es_out_id_t * );
+            es_out_id_t * realESID();
+            void release();
+            void notifyData();
+            bool isCompatible( const es_format_t * ) const;
+
+        private:
+            FakeESOut *fakeesout;
+            es_out_id_t *p_real_es_id;
+            es_format_t fmt;
+    };
+}
+
+#endif // FAKEESOUTID_HPP

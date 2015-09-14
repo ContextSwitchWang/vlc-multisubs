@@ -174,6 +174,7 @@ struct access_sys_t
     char       *psz_icy_title;
 
     uint64_t i_remaining;
+    uint64_t offset;
     uint64_t size;
 
     /* cookie jar borrowed from playlist, do not free */
@@ -188,7 +189,7 @@ struct access_sys_t
 };
 
 /* */
-static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
+static int OpenRedirected( vlc_object_t *p_this, const char *psz_url,
                            unsigned i_redirect );
 
 /* */
@@ -215,23 +216,22 @@ static vlc_http_cookie_jar_t *GetCookieJar( vlc_object_t *p_this );
 static int Open( vlc_object_t *p_this )
 {
     access_t *p_access = (access_t*)p_this;
-    return OpenRedirected( p_this, p_access->psz_access, 5 );
+
+    return OpenRedirected( p_this, p_access->psz_url, 5 );
 }
 
 /**
  * Open the given url with limited redirects
  * @param p_this: the vlc object
- * @psz_access: the acces to use (http, https, ...) (this value must be used
- *              instead of p_access->psz_access)
  * @i_redirect: number of redirections remaining
  * @return vlc error codes
  */
-static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
+static int OpenRedirected( vlc_object_t *p_this, const char *psz_url,
                            unsigned i_redirect )
 {
     access_t     *p_access = (access_t*)p_this;
     access_sys_t *p_sys;
-    char         *psz, *p;
+    char         *psz;
 
     /* Set up p_access */
     STANDARD_READ_ACCESS_INIT;
@@ -270,8 +270,8 @@ static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
     p_sys->i_remaining = 0;
     p_sys->b_persist = false;
     p_sys->b_has_size = false;
+    p_sys->offset = 0;
     p_sys->size = 0;
-    p_access->info.i_pos  = 0;
     p_access->info.b_eof  = false;
 
     /* Only forward an store cookies if the corresponding option is activated */
@@ -282,20 +282,14 @@ static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
 
     http_auth_Init( &p_sys->auth );
     http_auth_Init( &p_sys->proxy_auth );
-
-    /* Parse URI - remove spaces */
-    p = psz = strdup( p_access->psz_location );
-    while( (p = strchr( p, ' ' )) != NULL )
-        *p = '+';
-    vlc_UrlParse( &p_sys->url, psz, 0 );
-    free( psz );
+    vlc_UrlParse( &p_sys->url, psz_url );
 
     if( p_sys->url.psz_host == NULL || *p_sys->url.psz_host == '\0' )
     {
         msg_Warn( p_access, "invalid host" );
         goto error;
     }
-    if( !strncmp( psz_access, "https", 5 ) )
+    if( !strcmp( p_sys->url.psz_protocol, "https" ) )
     {
         /* HTTP over SSL */
         p_sys->p_creds = vlc_tls_ClientCreate( p_this );
@@ -354,15 +348,8 @@ static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
     psz = var_InheritString( p_access, "http-proxy" );
     if( psz == NULL )
     {
-        char *url;
-
-        if (likely(asprintf(&url, "%s://%s", psz_access,
-                            p_access->psz_location) != -1))
-        {
-            msg_Dbg(p_access, "querying proxy for %s", url);
-            psz = vlc_getProxyUrl(url);
-            free(url);
-        }
+        msg_Dbg(p_access, "querying proxy for %s", psz_url);
+        psz = vlc_getProxyUrl(psz_url);
 
         if (psz != NULL)
             msg_Dbg(p_access, "proxy: %s", psz);
@@ -372,7 +359,7 @@ static int OpenRedirected( vlc_object_t *p_this, const char *psz_access,
     if( psz != NULL )
     {
         p_sys->b_proxy = true;
-        vlc_UrlParse( &p_sys->proxy, psz, 0 );
+        vlc_UrlParse( &p_sys->proxy, psz );
         free( psz );
 
         psz = var_InheritString( p_access, "http-proxy-pwd" );
@@ -480,19 +467,13 @@ connect:
             goto error;
         }
 
-        const char *psz_protocol;
-        if( !strncmp( p_sys->psz_location, "http://", 7 ) )
-            psz_protocol = "http";
-        else if( !strncmp( p_sys->psz_location, "https://", 8 ) )
-            psz_protocol = "https";
-        else
+        if( strncmp( p_sys->psz_location, "http://", 7 )
+         && strncmp( p_sys->psz_location, "https://", 8 ) )
         {   /* Do not accept redirection outside of HTTP */
             msg_Err( p_access, "unsupported redirection ignored" );
             goto error;
         }
-        free( p_access->psz_location );
-        p_access->psz_location = strdup( p_sys->psz_location
-                                       + strlen( psz_protocol ) + 3 );
+
         /* Clean up current Open() run */
         vlc_UrlClean( &p_sys->url );
         http_auth_Reset( &p_sys->auth );
@@ -501,7 +482,6 @@ connect:
         http_auth_Reset( &p_sys->proxy_auth );
         free( p_sys->psz_mime );
         free( p_sys->psz_pragma );
-        free( p_sys->psz_location );
         free( p_sys->psz_user_agent );
         free( p_sys->psz_referrer );
 
@@ -510,10 +490,13 @@ connect:
 #ifdef HAVE_ZLIB_H
         inflateEnd( &p_sys->inflate.stream );
 #endif
+        char *psz_location = p_sys->psz_location;
         free( p_sys );
 
         /* Do new Open() run with new data */
-        return OpenRedirected( p_this, psz_protocol, i_redirect - 1 );
+        int ret = OpenRedirected( p_this, psz_location, i_redirect - 1 );
+        free( psz_location );
+        return ret;
     }
 
     if( p_sys->b_mms )
@@ -658,7 +641,7 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     if( p_sys->b_has_size )
     {
         /* Remaining bytes in the file */
-        uint64_t remainder = p_sys->size - p_access->info.i_pos;
+        uint64_t remainder = p_sys->size - p_sys->offset;
         if( remainder < i_len )
             i_len = remainder;
 
@@ -669,10 +652,10 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     if( i_len == 0 )
         goto fatal;
 
-    if( p_sys->i_icy_meta > 0 && p_access->info.i_pos - p_sys->i_icy_offset > 0 )
+    if( p_sys->i_icy_meta > 0 && p_sys->offset - p_sys->i_icy_offset > 0 )
     {
         int64_t i_next = p_sys->i_icy_meta -
-                                    (p_access->info.i_pos - p_sys->i_icy_offset ) % p_sys->i_icy_meta;
+                                    (p_sys->offset - p_sys->i_icy_offset ) % p_sys->i_icy_meta;
 
         if( i_next == p_sys->i_icy_meta )
         {
@@ -705,7 +688,7 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
         if( p_sys->b_reconnect )
         {
             msg_Dbg( p_access, "got disconnected, trying to reconnect" );
-            if( Connect( p_access, p_access->info.i_pos ) )
+            if( Connect( p_access, p_sys->offset ) )
             {
                 msg_Dbg( p_access, "reconnection failed" );
             }
@@ -728,10 +711,10 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     }
 
     assert( i_read >= 0 );
-    p_access->info.i_pos += i_read;
+    p_sys->offset += i_read;
     if( p_sys->b_has_size )
     {
-        assert( p_access->info.i_pos <= p_sys->size );
+        assert( p_sys->offset <= p_sys->size );
         assert( (unsigned)i_read <= p_sys->i_remaining );
         p_sys->i_remaining -= i_read;
     }
@@ -925,6 +908,8 @@ static int Control( access_t *p_access, int i_query, va_list args )
             break;
 
         case ACCESS_GET_SIZE:
+            if( !p_sys->b_has_size )
+                return VLC_EGENERIC;
             pi_64 = (int64_t*)va_arg( args, int64_t * );
             *pi_64 = p_sys->size;
            break;
@@ -1013,8 +998,8 @@ static int Connect( access_t *p_access, uint64_t i_tell )
     p_sys->i_remaining = 0;
     p_sys->b_persist = false;
     p_sys->b_has_size = false;
+    p_sys->offset = i_tell;
     p_sys->size = 0;
-    p_access->info.i_pos  = i_tell;
     p_access->info.b_eof  = false;
 
     /* Open connection */
@@ -1121,12 +1106,16 @@ static int Request( access_t *p_access, uint64_t i_tell )
     if( !psz_path || !*psz_path )
         psz_path = "/";
     if( p_sys->b_proxy && p_sys->p_tls == NULL )
-        WriteHeaders( p_access, "GET http://%s:%d%s HTTP/1.%d\r\n",
+        WriteHeaders( p_access, "GET http://%s:%d%s%s%s HTTP/1.%d\r\n",
                       p_sys->url.psz_host, p_sys->url.i_port,
-                      psz_path, p_sys->i_version );
+                      psz_path, p_sys->url.psz_option ? "?" : "",
+                      p_sys->url.psz_option ? p_sys->url.psz_option : "",
+                      p_sys->i_version );
     else
-        WriteHeaders( p_access, "GET %s HTTP/1.%d\r\n",
-                      psz_path, p_sys->i_version );
+        WriteHeaders( p_access, "GET %s%s%s HTTP/1.%d\r\n",
+                      psz_path, p_sys->url.psz_option ? "?" : "",
+                      p_sys->url.psz_option ? p_sys->url.psz_option : "",
+                      p_sys->i_version );
     if( p_sys->url.i_port != (p_sys->p_tls ? 443 : 80) )
         WriteHeaders( p_access, "Host: %s:%d\r\n",
                       p_sys->url.psz_host, p_sys->url.i_port );
@@ -1290,7 +1279,7 @@ static int Request( access_t *p_access, uint64_t i_tell )
             uint64_t i_nsize = p_sys->size;
             sscanf(p,"bytes %"SCNu64"-%"SCNu64"/%"SCNu64,&i_ntell,&i_nend,&i_nsize);
             if(i_nend > i_ntell ) {
-                p_access->info.i_pos = i_ntell;
+                p_sys->offset = i_ntell;
                 p_sys->i_icy_offset  = i_ntell;
                 p_sys->i_remaining = i_nend+1-i_ntell;
                 uint64_t i_size = (i_nsize > i_nend) ? i_nsize : (i_nend + 1);

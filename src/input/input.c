@@ -41,7 +41,6 @@
 #include "event.h"
 #include "es_out.h"
 #include "es_out_timeshift.h"
-#include "access.h"
 #include "demux.h"
 #include "stream.h"
 #include "item.h"
@@ -454,10 +453,6 @@ static input_thread_t *Create( vlc_object_t *p_parent, input_item_t *p_item,
                      {
                          p_seekpoint->psz_name = strdup(psz_start + 5);
                      }
-                     else if( !strncmp( psz_start, "bytes=", 6 ) )
-                     {
-                         p_seekpoint->i_byte_offset = atoll(psz_start + 6);
-                     }
                      else if( !strncmp( psz_start, "time=", 5 ) )
                      {
                          p_seekpoint->i_time_offset = atoll(psz_start + 5) *
@@ -465,8 +460,8 @@ static input_thread_t *Create( vlc_object_t *p_parent, input_item_t *p_item,
                      }
                      psz_start = psz_end + 1;
                 }
-                msg_Dbg( p_input, "adding bookmark: %s, bytes=%"PRId64", time=%"PRId64,
-                                  p_seekpoint->psz_name, p_seekpoint->i_byte_offset,
+                msg_Dbg( p_input, "adding bookmark: %s, time=%"PRId64,
+                                  p_seekpoint->psz_name,
                                   p_seekpoint->i_time_offset );
                 input_Control( p_input, INPUT_ADD_BOOKMARK, p_seekpoint );
                 vlc_seekpoint_Delete( p_seekpoint );
@@ -663,7 +658,6 @@ static void MainLoopStatistics( input_thread_t *p_input )
     /* update current bookmark */
     vlc_mutex_lock( &p_input->p->p_item->lock );
     p_input->p->bookmark.i_time_offset = i_time;
-    p_input->p->bookmark.i_byte_offset = -1;
     vlc_mutex_unlock( &p_input->p->p_item->lock );
 
     stats_ComputeInputStats( p_input, p_input->p->p_item->p_stats );
@@ -2294,10 +2288,16 @@ static int InputSourceInit( input_thread_t *p_input,
             TAB_CLEAN( count, tab );
         }
 
-        /* */
-        access_t *p_access = access_New( p_input, p_input,
-                                         psz_access, psz_path );
-        if( p_access == NULL )
+        /* Create the stream_t */
+        stream_t *p_stream = NULL;
+        char *url;
+
+        if( likely(asprintf( &url, "%s://%s", psz_access, psz_path) >= 0) )
+        {
+            p_stream = stream_AccessNew( VLC_OBJECT(p_input), p_input, url );
+            free( url );
+        }
+        if( p_stream == NULL )
         {
             msg_Err( p_input, "open of `%s' failed", psz_mrl );
             if( !b_in_can_fail && !input_Stopped( p_input ) )
@@ -2307,23 +2307,18 @@ static int InputSourceInit( input_thread_t *p_input,
             goto error;
         }
 
-        /* Access-forced demuxer (PARENTAL ADVISORY: EXPLICIT HACK) */
-#warning FIXME: parse content type
+        /* Add stream filters */
+        p_stream = stream_FilterAutoNew( p_stream );
 
-        /* Create the stream_t */
-        stream_t *p_stream = stream_AccessNew( p_access );
-        if( p_stream == NULL )
+        char *filters = var_GetNonEmptyString( p_input, "stream-filter" );
+        if( filters != NULL )
         {
-            msg_Warn( p_input, "cannot create a stream_t from access" );
-            goto error;
+            p_stream = stream_FilterChainNew( p_stream, filters );
+            free( filters );
         }
 
-        /* Add stream filters */
-        char *psz_stream_filter = var_GetNonEmptyString( p_input,
-                                                         "stream-filter" );
-        p_stream = stream_FilterChainNew( p_stream, psz_stream_filter,
-                               var_GetBool( p_input, "input-record-native" ) );
-        free( psz_stream_filter );
+        if( var_GetBool( p_input, "input-record-native" ) )
+            p_stream = stream_FilterChainNew( p_stream, "record" );
 
         if( !p_input->b_preparsing )
         {

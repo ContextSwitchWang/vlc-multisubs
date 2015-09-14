@@ -555,7 +555,7 @@ static int Handshake(intf_thread_t *p_this)
 
     /* read answer */
     i_ret = stream_Read(p_stream, p_buffer, sizeof(p_buffer) - 1);
-    if (i_ret == 0)
+    if (i_ret <= 0)
     {
         stream_Delete(p_stream);
         return VLC_EGENERIC;
@@ -644,7 +644,7 @@ static int Handshake(intf_thread_t *p_this)
         goto oom;
 
     /* parse the submission url */
-    vlc_UrlParse(&p_sys->p_submit_url, psz_url, 0);
+    vlc_UrlParse(&p_sys->p_submit_url, psz_url);
     free(psz_url);
 
     return VLC_SUCCESS;

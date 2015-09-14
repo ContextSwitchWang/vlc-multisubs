@@ -164,7 +164,7 @@ static int Open( vlc_object_t *p_this )
     if( p_sys->p_session == NULL )
         goto error;
 
-    vlc_UrlParse( &p_sys->url, p_access->psz_location, 0 );
+    vlc_UrlParse( &p_sys->url, p_access->psz_location );
     get_credentials( p_access );
     if( get_address( p_access ) != VLC_SUCCESS )
         goto error;
@@ -495,7 +495,6 @@ static bool get_path( access_t *p_access )
 static int Seek( access_t *p_access, uint64_t i_pos )
 {
     access_sys_t *p_sys = p_access->p_sys;
-    int64_t      i_ret;
 
     if( i_pos >= INT64_MAX )
         return VLC_EGENERIC;
@@ -503,10 +502,9 @@ static int Seek( access_t *p_access, uint64_t i_pos )
     msg_Dbg( p_access, "seeking to %"PRId64, i_pos );
 
     /* seek cannot fail in bdsm, but the subsequent read can */
-    i_ret = smb_fseek(p_sys->p_session, p_sys->i_fd, i_pos, SMB_SEEK_SET);
+    smb_fseek(p_sys->p_session, p_sys->i_fd, i_pos, SMB_SEEK_SET);
 
     p_access->info.b_eof = false;
-    p_access->info.i_pos = i_ret;
 
     return VLC_SUCCESS;
 }
@@ -529,7 +527,6 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     }
 
     if( i_read == 0 ) p_access->info.b_eof = true;
-    else if( i_read > 0 ) p_access->info.i_pos += i_read;
 
     return i_read;
 }
@@ -696,6 +693,22 @@ static input_item_t* BrowseDirectory( access_t *p_access )
     return p_item;
 }
 
+static int DirControl( access_t *p_access, int i_query, va_list args )
+{
+    switch( i_query )
+    {
+    case ACCESS_IS_DIRECTORY:
+        *va_arg( args, bool * ) = false; /* is not sorted */
+        *va_arg( args, bool * ) = p_access->pf_readdir == BrowseDirectory;
+                                  /* might loop */
+        break;
+    default:
+        return access_vaDirectoryControlHelper( p_access, i_query, args );
+    }
+
+    return VLC_SUCCESS;
+}
+
 static int BrowserInit( access_t *p_access )
 {
     access_sys_t *p_sys = p_access->p_sys;
@@ -703,11 +716,8 @@ static int BrowserInit( access_t *p_access )
     if( p_sys->psz_share == NULL )
         p_access->pf_readdir = BrowseShare;
     else
-    {
         p_access->pf_readdir = BrowseDirectory;
-        p_access->info.b_dir_can_loop = true;
-    }
-    p_access->pf_control = access_vaDirectoryControlHelper;
+    p_access->pf_control = DirControl;
 
     return VLC_SUCCESS;
 }

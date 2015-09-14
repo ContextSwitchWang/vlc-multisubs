@@ -268,7 +268,7 @@ static int parse_chunk( stream_t *s, chunk_t *ck, sms_stream_t *sms )
     MP4_Box_t root_box = { 0 };
     root_box.i_type = ATOM_root;
     root_box.i_size = ck->size;
-    if ( MP4_ReadBoxContainerChildren( ck_s, &root_box, 0 ) != 1 )
+    if ( MP4_ReadBoxContainerChildren( ck_s, &root_box, NULL ) != 1 )
     {
         stream_Delete( ck_s );
         return VLC_EGENERIC;
@@ -310,7 +310,7 @@ static int parse_chunk( stream_t *s, chunk_t *ck, sms_stream_t *sms )
     MP4_Box_t *p_box = root_box.p_first;
     while( p_box )
     {
-        MP4_BoxFree( ck_s, p_box );
+        MP4_BoxFree( p_box );
         p_box = p_box->p_next;
     }
     stream_Delete( ck_s );
@@ -424,23 +424,11 @@ build_init_chunk_error:
 static int Download( stream_t *s, sms_stream_t *sms )
 {
     stream_sys_t *p_sys = s->p_sys;
-
-    assert( sms->p_nextdownload );
-    assert( sms->p_nextdownload->data == NULL );
-    assert( sms->current_qlvl );
-
     chunk_t *chunk = sms->p_nextdownload;
-    if( !chunk )
-    {
-        msg_Warn( s, "Could not find a chunk for stream %s", sms->name );
-        return VLC_EGENERIC;
-    }
-    if( chunk->data != NULL )
-    {
-        /* Segment already downloaded */
-        msg_Warn( s, "Segment already downloaded" );
-        return VLC_SUCCESS;
-    }
+
+    assert( chunk != NULL );
+    assert( chunk->data == NULL );
+    assert( sms->current_qlvl );
 
     chunk->type = sms->type;
 

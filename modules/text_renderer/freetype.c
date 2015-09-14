@@ -309,50 +309,6 @@ static int LoadFontsFromAttachments( filter_t *p_filter )
     return VLC_SUCCESS;
 }
 
-static int GetFontSize( filter_t *p_filter )
-{
-    filter_sys_t *p_sys = p_filter->p_sys;
-    int           i_size = 0;
-
-    if( p_sys->p_default_style->i_font_size )
-    {
-        i_size = p_sys->p_default_style->i_font_size;
-    }
-    else if( p_sys->p_default_style->f_font_relsize )
-    {
-        i_size = (int) p_filter->fmt_out.video.i_height * p_sys->p_default_style->f_font_relsize;
-    }
-
-    if( i_size <= 0 )
-    {
-        msg_Warn( p_filter, "invalid fontsize, using %d", FREETYPE_DEFAULT_FONT_SIZE );
-        i_size = FREETYPE_DEFAULT_FONT_SIZE;
-    }
-    return i_size;
-}
-
-static int SetFontSize( filter_t *p_filter, int i_size )
-{
-    filter_sys_t *p_sys = p_filter->p_sys;
-
-    if( !i_size )
-    {
-        i_size = GetFontSize( p_filter );
-
-        msg_Dbg( p_filter, "using fontsize: %i", i_size );
-    }
-
-    p_sys->p_style->i_font_size = i_size;
-
-    if( FT_Set_Pixel_Sizes( p_sys->p_face, 0, i_size ) )
-    {
-        msg_Err( p_filter, "couldn't set font size to %d", i_size );
-        return VLC_EGENERIC;
-    }
-
-    return VLC_SUCCESS;
-}
-
 /*****************************************************************************
  * RenderYUVP: place string in picture
  *****************************************************************************
@@ -389,8 +345,8 @@ static int RenderYUVP( filter_t *p_filter, subpicture_region_t *p_region,
 
     /* Calculate text color components
      * Only use the first color */
-    int i_alpha = (p_line->p_character[0].i_color >> 24) & 0xff;
-    YUVFromRGB( p_line->p_character[0].i_color, &i_y, &i_u, &i_v );
+    const int i_alpha = p_line->p_character[0].p_style->i_font_alpha;
+    YUVFromRGB( p_line->p_character[0].p_style->i_font_color, &i_y, &i_u, &i_v );
 
     /* Build palette */
     fmt.p_palette->i_entries = 16;
@@ -671,8 +627,6 @@ static inline void RenderBackground( subpicture_region_t *p_region,
     {
         int i_align_left = i_margin;
         int i_align_top = i_margin;
-        int line_start = 0;
-        int line_end = 0;
         unsigned line_top = 0;
         int line_bottom = 0;
         int max_height = 0;
@@ -696,51 +650,69 @@ static inline void RenderBackground( subpicture_region_t *p_region,
                 max_height = p_glyph->top;
         }
 
+        if( p_line->i_first_visible_char_index < 0 )
+            continue; /* only spaces */
+
+        /* Compute the upper boundary for the background */
+        line_top = __MAX(0, i_align_top - max_height  + p_bbox->yMax + p_line->i_base_line);
+
+        /* Compute lower boundary for the background */
+        line_bottom =  __MIN(line_top + p_line->i_height, p_region->fmt.i_visible_height);
+
         /* Compute the background for the line (identify leading/trailing space) */
-        for( int i = 0; i < p_line->i_character_count; i++ ) {
-            const line_character_t *ch = &p_line->p_character[i];
-            FT_BitmapGlyph p_glyph = ch->p_outline ? ch->p_outline : ch->p_glyph;
-            if (p_glyph && p_glyph->bitmap.rows > 0) {
-                // Found a non-whitespace character
-                line_start = i_align_left + p_glyph->left - p_bbox->xMin;
-                break;
-            }
-        }
+        int line_start = p_line->p_character[p_line->i_first_visible_char_index].p_glyph->left +
+                         i_align_left - p_bbox->xMin;
 
         /* Fudge factor to make sure caption background edges are left aligned
            despite variable font width */
         if (line_start < 12)
             line_start = 0;
 
-        /* Find right boundary for bounding box for background */
-        for( int i = p_line->i_character_count; i > 0; i-- ) {
-            const line_character_t *ch = &p_line->p_character[i - 1];
-            FT_BitmapGlyph p_glyph = ch->p_shadow ? ch->p_shadow : ch->p_glyph;
-            if (p_glyph && p_glyph->bitmap.rows > 0) {
-                // Found a non-whitespace character
-                line_end = i_align_left + p_glyph->left - p_bbox->xMin + p_glyph->bitmap.width;
-                break;
-            }
-        }
-
         /* Setup color for the background */
-        uint8_t i_x, i_y, i_z;
-        ExtractComponents( 0x000000, &i_x, &i_y, &i_z );
+        const text_style_t *p_prev_style = p_line->p_character[p_line->i_first_visible_char_index].p_style;
 
-        /* Compute the upper boundary for the background */
-        line_top = i_align_top + p_line->i_base_line;
-        if( p_line->i_height && p_line->i_height < max_height )
-            line_top += max_height - p_line->i_height;
-
-        /* Compute lower boundary for the background */
-        line_bottom =  __MIN(line_top + p_line->i_height, p_region->fmt.i_visible_height);
-
-        /* Render the actual background */
-        for( int dy = line_top; dy < line_bottom; dy++ )
+        int i_char_index = p_line->i_first_visible_char_index;
+        while( i_char_index <= p_line->i_last_visible_char_index )
         {
-            for( int dx = line_start; dx < line_end; dx++ )
-                BlendPixel( p_picture, dx, dy, 0xff, i_x, i_y, i_z, 0xff );
+            /* find last char having the same style */
+            int i_seg_end = i_char_index;
+            while( i_seg_end < p_line->i_last_visible_char_index &&
+                   p_prev_style == p_line->p_character[i_seg_end].p_style )
+            {
+                i_seg_end++;
+            }
+
+            /* Find right boundary for bounding box for background */
+            int line_end = p_line->p_character[i_seg_end].p_glyph->left +
+                           p_line->p_character[i_seg_end].p_glyph->bitmap.width +
+                           i_align_left - p_bbox->xMin;
+
+            const line_character_t *p_char = &p_line->p_character[i_char_index];
+            if( p_char->p_style->i_style_flags & STYLE_BACKGROUND )
+            {
+                uint8_t i_x, i_y, i_z;
+                ExtractComponents( p_char->b_in_karaoke ? p_char->p_style->i_karaoke_background_color :
+                                                          p_char->p_style->i_background_color,
+                                   &i_x, &i_y, &i_z );
+                const uint8_t i_alpha = p_char->b_in_karaoke ? p_char->p_style->i_karaoke_background_alpha:
+                                                               p_char->p_style->i_background_alpha;
+
+                /* Render the actual background */
+                if( i_alpha != STYLE_ALPHA_TRANSPARENT )
+                {
+                    for( int dy = line_top; dy < line_bottom; dy++ )
+                    {
+                        for( int dx = line_start; dx < line_end; dx++ )
+                            BlendPixel( p_picture, dx, dy, i_alpha, i_x, i_y, i_z, 0xff );
+                    }
+                }
+            }
+
+            line_start = line_end;
+            i_char_index = i_seg_end + 1;
+            p_prev_style = p_line->p_character->p_style;
         }
+
     }
 }
 
@@ -754,8 +726,6 @@ static inline int RenderAXYZ( filter_t *p_filter,
                               void (*FillPicture)( picture_t *p_picture, int, int, int, int ),
                               void (*BlendPixel)(picture_t *, int, int, int, int, int, int, int) )
 {
-    filter_sys_t *p_sys = p_filter->p_sys;
-
     /* Create a new subpicture region */
     const int i_text_width  = p_bbox->xMax - p_bbox->xMin;
     const int i_text_height = p_bbox->yMax - p_bbox->yMin;
@@ -776,11 +746,9 @@ static inline int RenderAXYZ( filter_t *p_filter,
     i_a = VLC_CLIP( i_a, 0, 255 );
     uint8_t i_x, i_y, i_z;
 
-    if (p_region->b_renderbg) {
+    if (p_region->b_noregionbg) {
         /* Render the background just under the text */
-        FillPicture( p_picture, 0x00, 0x00, 0x00, 0x00 );
-        RenderBackground(p_region, p_line_head, p_bbox, i_margin, p_picture, i_text_width,
-                         ExtractComponents, BlendPixel);
+        FillPicture( p_picture, STYLE_ALPHA_TRANSPARENT, 0x00, 0x00, 0x00 );
     } else {
         /* Render background under entire subpicture block */
         int i_background_color = var_InheritInteger( p_filter, "freetype-background-color" );
@@ -788,6 +756,9 @@ static inline int RenderAXYZ( filter_t *p_filter,
         ExtractComponents( i_background_color, &i_x, &i_y, &i_z );
         FillPicture( p_picture, i_a, i_x, i_y, i_z );
     }
+    /* Render text's background (from decoder) if any */
+    RenderBackground(p_region, p_line_head, p_bbox, i_margin, p_picture, i_text_width,
+                     ExtractComponents, BlendPixel);
 
     /* Render shadow then outline and then normal glyphs */
     for( int g = 0; g < 3; g++ )
@@ -809,28 +780,37 @@ static inline int RenderAXYZ( filter_t *p_filter,
             int i_align_top = i_margin;
 
             /* Render all glyphs and underline/strikethrough */
-            for( int i = 0; i < p_line->i_character_count; i++ )
+            for( int i = p_line->i_first_visible_char_index; i <= p_line->i_last_visible_char_index; i++ )
             {
                 const line_character_t *ch = &p_line->p_character[i];
                 const FT_BitmapGlyph p_glyph = g == 0 ? ch->p_shadow : g == 1 ? ch->p_outline : ch->p_glyph;
                 if( !p_glyph )
                     continue;
 
-                i_a = (ch->i_color >> 24) & 0xff;
+                i_a = ch->p_style->i_font_alpha;
+
                 uint32_t i_color;
-                switch (g) {
+                switch (g) {/* Apply font alpha ratio to shadow/outline alpha */
                 case 0:
-                    i_a     = i_a * p_sys->p_style->i_shadow_alpha / 255;
-                    i_color = p_sys->p_style->i_shadow_color;
+                    i_a     = i_a * ch->p_style->i_shadow_alpha / 255;
+                    i_color = ch->p_style->i_shadow_color;
                     break;
                 case 1:
-                    i_a     = i_a * p_sys->p_style->i_outline_alpha / 255;
-                    i_color = p_sys->p_style->i_outline_color;
+                    i_a     = i_a * ch->p_style->i_outline_alpha / 255;
+                    i_color = ch->p_style->i_outline_color;
                     break;
                 default:
-                    i_color = ch->i_color;
+                    i_color = ch->p_style->i_font_color;
                     break;
                 }
+
+                /* Don't render if invisible or not wanted */
+                if( i_a == STYLE_ALPHA_TRANSPARENT ||
+                   (g == 0 && 0 == (ch->p_style->i_style_flags & STYLE_SHADOW) ) ||
+                   (g == 1 && 0 == (ch->p_style->i_style_flags & STYLE_OUTLINE) )
+                  )
+                    continue;
+
                 ExtractComponents( i_color, &i_x, &i_y, &i_z );
 
                 int i_glyph_y = i_align_top  - p_glyph->top  + p_bbox->yMax + p_line->i_base_line;
@@ -857,42 +837,6 @@ static inline int RenderAXYZ( filter_t *p_filter,
     return VLC_SUCCESS;
 }
 
-
-
-
-static FT_Face LoadEmbeddedFace( filter_sys_t *p_sys, const char *psz_fontname,
-                                 const text_style_t *p_style )
-{
-    for( int k = 0; k < p_sys->i_font_attachments; k++ )
-    {
-        input_attachment_t *p_attach   = p_sys->pp_font_attachments[k];
-        int                 i_font_idx = 0;
-        FT_Face             p_face = NULL;
-
-        while( 0 == FT_New_Memory_Face( p_sys->p_library,
-                                        p_attach->p_data,
-                                        p_attach->i_data,
-                                        i_font_idx,
-                                        &p_face ))
-        {
-            if( p_face )
-            {
-                int i_style_received = ((p_face->style_flags & FT_STYLE_FLAG_BOLD)    ? STYLE_BOLD   : 0) |
-                                       ((p_face->style_flags & FT_STYLE_FLAG_ITALIC ) ? STYLE_ITALIC : 0);
-                if( p_face->family_name != NULL
-                 && !strcasecmp( p_face->family_name, psz_fontname )
-                 && (p_style->i_style_flags & (STYLE_BOLD | STYLE_ITALIC))
-                                                          == i_style_received )
-                    return p_face;
-
-                FT_Done_Face( p_face );
-            }
-            i_font_idx++;
-        }
-    }
-    return NULL;
-}
-
 static void FillDefaultStyles( filter_t *p_filter )
 {
     filter_sys_t *p_sys = p_filter->p_sys;
@@ -913,6 +857,10 @@ static void FillDefaultStyles( filter_t *p_filter )
     p_sys->p_default_style->i_shadow_color = var_InheritInteger( p_filter, "freetype-shadow-color" );
     p_sys->p_default_style->i_shadow_color = VLC_CLIP( p_sys->p_default_style->i_shadow_color, 0, 0xFFFFFF );
 
+    p_sys->p_default_style->i_font_size = 0;
+    p_sys->p_default_style->i_style_flags |= STYLE_SHADOW;
+    p_sys->p_default_style->i_features |= STYLE_HAS_FLAGS;
+
     p_sys->p_forced_style->i_font_size = var_InheritInteger( p_filter, "freetype-fontsize" );
     p_sys->p_forced_style->f_font_relsize = var_InheritInteger( p_filter, "freetype-rel-fontsize" );
     if( p_sys->p_forced_style->f_font_relsize )
@@ -927,28 +875,46 @@ static void FillDefaultStyles( filter_t *p_filter )
     /* Apply forced styles to defaults, if any */
     text_style_Merge( p_sys->p_default_style, p_sys->p_forced_style, true );
 }
-static uni_char_t* SegmentsToTextAndStyles( filter_t *p_filter, const text_segment_t *p_segment, size_t *pi_string_length, const text_style_t ***ppp_styles)
+
+static void FreeStylesArray( text_style_t **pp_styles, size_t i_styles )
 {
-    const text_style_t **pp_styles = NULL;
+    text_style_t *p_style = NULL;
+    for( size_t i = 0; i< i_styles; i++ )
+    {
+        if( p_style != pp_styles[i] )
+        {
+            p_style = pp_styles[i];
+            text_style_Delete( p_style );
+        }
+    }
+    free( pp_styles );
+}
+
+static uni_char_t* SegmentsToTextAndStyles( filter_t *p_filter, const text_segment_t *p_segment, size_t *pi_string_length,
+                                            text_style_t ***ppp_styles, size_t *pi_styles, bool b_grid )
+{
+    text_style_t **pp_styles = NULL;
     uni_char_t *psz_uni = NULL;
+    const int i_scale = ( b_grid ) ? 100 : var_InheritInteger( p_filter, "sub-text-scale");
     size_t i_size = 0;
     size_t i_nb_char = 0;
-    for ( const text_segment_t *s = p_segment; s != NULL; s = s->p_next )
+    *pi_styles = 0;
+    for( const text_segment_t *s = p_segment; s != NULL; s = s->p_next )
     {
-        if ( !s->psz_text )
+        if( !s->psz_text )
             continue;
         size_t i_string_bytes = 0;
         uni_char_t *psz_tmp = ToCharset( FREETYPE_TO_UCS, s->psz_text, &i_string_bytes );
-        if ( !psz_tmp )
+        if( !psz_tmp )
         {
             free( psz_uni );
-            free( pp_styles );
+            FreeStylesArray( pp_styles, *pi_styles );
             return NULL;
         }
         uni_char_t *psz_realloc = realloc(psz_uni, i_size + i_string_bytes);
-        if ( unlikely( !psz_realloc ) )
+        if( unlikely( !psz_realloc ) )
         {
-            free( pp_styles );
+            FreeStylesArray( pp_styles, *pi_styles );
             free( psz_uni );
             free( psz_tmp );
             return NULL;
@@ -956,31 +922,39 @@ static uni_char_t* SegmentsToTextAndStyles( filter_t *p_filter, const text_segme
         psz_uni = psz_realloc;
         memcpy( psz_uni + i_nb_char, psz_tmp, i_string_bytes );
         free( psz_tmp );
+
         // We want one text_style_t* per character. The amount of characters is the number of bytes divided by
         // the size of one glyph, in byte
-        const text_style_t **pp_styles_realloc = realloc( pp_styles, ( (i_size + i_string_bytes) / sizeof( *psz_uni ) * sizeof( *pp_styles ) ) );
+        const size_t i_newsize = (i_size + i_string_bytes) / sizeof( *psz_uni );
+        text_style_t **pp_styles_realloc = realloc( pp_styles, i_newsize * sizeof( *pp_styles ));
         if ( unlikely( !pp_styles_realloc ) )
         {
-            free( pp_styles );
+            FreeStylesArray( pp_styles, *pi_styles );
             free( psz_uni );
             return NULL;
         }
         pp_styles = pp_styles_realloc;
-        // We're actually writing to a read only object, something's wrong with the conception.
+        *pi_styles = i_newsize;
+
         text_style_t *p_style = text_style_Duplicate( p_filter->p_sys->p_default_style );
         if ( p_style == NULL )
         {
-            free( pp_styles );
+            FreeStylesArray( pp_styles, *pi_styles );
             free( psz_uni );
             return NULL;
         }
 
         if( s->style )
-        {
             /* Replace defaults with segment values */
             text_style_Merge( p_style, s->style, true );
-            /* Overwrite any default or value with forced ones */
-            text_style_Merge( p_style, p_filter->p_sys->p_forced_style, true );
+
+        /* Overwrite any default or value with forced ones */
+        text_style_Merge( p_style, p_filter->p_sys->p_forced_style, true );
+
+        if( i_scale != 100 )
+        {
+            p_style->i_font_size = p_style->i_font_size * i_scale / 100;
+            p_style->f_font_relsize = p_style->f_font_relsize * i_scale / 100;
         }
 
         // i_string_bytes is a number of bytes, while here we're going to assign pointer by pointer
@@ -1007,16 +981,15 @@ static int Render( filter_t *p_filter, subpicture_region_t *p_region_out,
     if( !p_region_in )
         return VLC_EGENERIC;
 
-    const text_style_t **pp_styles = NULL;
+    text_style_t **pp_styles = NULL;
     size_t i_text_length = 0;
-    uni_char_t *psz_text = SegmentsToTextAndStyles( p_filter, p_region_in->p_text, &i_text_length, &pp_styles );
+    size_t i_styles = 0;
+    uni_char_t *psz_text = SegmentsToTextAndStyles( p_filter, p_region_in->p_text, &i_text_length,
+                                                    &pp_styles, &i_styles, p_region_in->b_gridmode );
     if( !psz_text || !pp_styles )
     {
         return VLC_EGENERIC;
     }
-
-    /* Reset the default fontsize in case screen metrics have changed */
-    p_filter->p_sys->p_style->i_font_size = GetFontSize( p_filter );
 
     /* */
     int rv = VLC_SUCCESS;
@@ -1028,7 +1001,7 @@ static int Render( filter_t *p_filter, subpicture_region_t *p_region_out,
 
     rv = LayoutText( p_filter,
                      &p_lines, &bbox, &i_max_face_height,
-                     psz_text, pp_styles, pi_k_durations, i_text_length );
+                     psz_text, pp_styles, pi_k_durations, i_text_length, p_region_in->b_gridmode );
 
     p_region_out->i_x = p_region_in->i_x;
     p_region_out->i_y = p_region_in->i_y;
@@ -1047,7 +1020,7 @@ static int Render( filter_t *p_filter, subpicture_region_t *p_region_out,
 
         uint8_t i_background_opacity = var_InheritInteger( p_filter, "freetype-background-opacity" );
         i_background_opacity = VLC_CLIP( i_background_opacity, 0, 255 );
-        const int i_margin = i_background_opacity > 0 ? i_max_face_height / 4 : 0;
+        const int i_margin = (i_background_opacity > 0 && !p_region_in->b_gridmode) ? i_max_face_height / 4 : 0;
         for( const vlc_fourcc_t *p_chroma = p_chroma_list; *p_chroma != 0; p_chroma++ )
         {
             rv = VLC_EGENERIC;
@@ -1086,8 +1059,7 @@ static int Render( filter_t *p_filter, subpicture_region_t *p_region_out,
     FreeLines( p_lines );
 
     free( psz_text );
-    // Let the styles themselves be freed by the text_segment's release
-    free( pp_styles );
+    FreeStylesArray( pp_styles, i_styles );
     free( pi_k_durations );
 
     return rv;
@@ -1100,8 +1072,7 @@ static int Render( filter_t *p_filter, subpicture_region_t *p_region_out,
  *****************************************************************************/
 static int Init_FT( vlc_object_t *p_this,
                     const char *psz_fontfile,
-                    const int fontindex,
-                    const float f_outline_thickness)
+                    const int fontindex )
 {
     filter_t      *p_filter = (filter_t *)p_this;
     filter_sys_t  *p_sys = p_filter->p_sys;
@@ -1137,15 +1108,15 @@ static int Init_FT( vlc_object_t *p_this,
         goto error;
     }
 
-    if( SetFontSize( p_filter, (int) 0 ) != VLC_SUCCESS ) goto error;
-
-    p_sys->p_stroker = NULL;
-    if( f_outline_thickness > .001f )
+    if( FT_Set_Pixel_Sizes( p_sys->p_face, 0, STYLE_DEFAULT_FONT_SIZE ) )
     {
-        i_error = FT_Stroker_New( p_sys->p_library, &p_sys->p_stroker );
-        if( i_error )
-            msg_Err( p_filter, "Failed to create stroker for outlining" );
+        msg_Err( p_filter, "couldn't set font size to %d", STYLE_DEFAULT_FONT_SIZE );
+        goto error;
     }
+
+    i_error = FT_Stroker_New( p_sys->p_library, &p_sys->p_stroker );
+    if( i_error )
+        msg_Err( p_filter, "Failed to create stroker for outlining" );
 
     return VLC_SUCCESS;
 
@@ -1155,7 +1126,6 @@ error:
 
     return VLC_EGENERIC;
 }
-
 
 static int Create( vlc_object_t *p_this )
 {
@@ -1180,8 +1150,6 @@ static int Create( vlc_object_t *p_this )
         free(p_sys);
         return VLC_ENOMEM;
     }
-
-    p_sys->p_style = NULL;
 
     /* empty style for style overriding cases */
     p_sys->p_forced_style = text_style_Create( STYLE_NO_DEFAULTS );
@@ -1245,16 +1213,6 @@ static int Create( vlc_object_t *p_this )
     p_sys->pf_select = Dummy_Select;
 #endif
 
-    /* Set default style to current (FIXME: is current really used/needed?) */
-    p_sys->p_style = text_style_Duplicate( p_sys->p_default_style );
-    if( !p_sys->p_style )
-    {
-        text_style_Delete( p_sys->p_default_style );
-        text_style_Delete( p_sys->p_forced_style );
-        free(p_sys);
-        return VLC_ENOMEM;
-    }
-
     /* */
     psz_fontfile = p_sys->pf_select( p_filter, p_sys->p_default_style->psz_fontname,
                                      false, false, p_sys->p_default_style->i_font_size, &fontindex );
@@ -1272,7 +1230,7 @@ static int Create( vlc_object_t *p_this )
     if( !psz_monofontfile )
         psz_monofontfile = File_Select( p_sys->p_default_style->psz_monofontname );
 
-    if( Init_FT( p_this, psz_fontfile, fontindex, f_outline_thickness ) != VLC_SUCCESS )
+    if( Init_FT( p_this, psz_fontfile, fontindex ) != VLC_SUCCESS )
         goto error;
 
     int i_faces_size = 20;
@@ -1296,7 +1254,6 @@ static int Create( vlc_object_t *p_this )
 error:
     free( psz_fontfile );
     free( psz_monofontfile );
-    text_style_Delete( p_sys->p_style );
     text_style_Delete( p_sys->p_default_style );
     text_style_Delete( p_sys->p_forced_style );
     free( p_sys );
@@ -1344,13 +1301,13 @@ static void Destroy( vlc_object_t *p_this )
     }
 
     text_style_Delete( p_sys->p_default_style );
-    text_style_Delete( p_sys->p_style );
     text_style_Delete( p_sys->p_forced_style );
 
     Destroy_FT( p_this );
     free( p_sys );
 }
 
+/* Face loading */
 bool FaceStyleEquals( const text_style_t *p_style1,
                              const text_style_t *p_style2 )
 {
@@ -1364,15 +1321,62 @@ bool FaceStyleEquals( const text_style_t *p_style1,
            !strcmp( p_style1->psz_fontname, p_style2->psz_fontname );
 }
 
+static FT_Face LoadEmbeddedFace( filter_sys_t *p_sys, const char *psz_fontname,
+                                 const text_style_t *p_style )
+{
+    for( int k = 0; k < p_sys->i_font_attachments; k++ )
+    {
+        input_attachment_t *p_attach   = p_sys->pp_font_attachments[k];
+        int                 i_font_idx = 0;
+        FT_Face             p_face = NULL;
+
+        while( 0 == FT_New_Memory_Face( p_sys->p_library,
+                                        p_attach->p_data,
+                                        p_attach->i_data,
+                                        i_font_idx,
+                                        &p_face ))
+        {
+            if( p_face )
+            {
+                int i_style_received = ((p_face->style_flags & FT_STYLE_FLAG_BOLD)    ? STYLE_BOLD   : 0) |
+                                       ((p_face->style_flags & FT_STYLE_FLAG_ITALIC ) ? STYLE_ITALIC : 0);
+                if( p_face->family_name != NULL
+                 && !strcasecmp( p_face->family_name, psz_fontname )
+                 && (p_style->i_style_flags & (STYLE_BOLD | STYLE_ITALIC))
+                                                          == i_style_received )
+                    return p_face;
+
+                FT_Done_Face( p_face );
+            }
+            i_font_idx++;
+        }
+    }
+    return NULL;
+}
+
+int ConvertToLiveSize( filter_t *p_filter, const text_style_t *p_style )
+{
+    int i_font_size = STYLE_DEFAULT_FONT_SIZE;
+    if( p_style->i_font_size )
+    {
+        i_font_size = p_style->i_font_size;
+    }
+    else if ( p_style->f_font_relsize )
+    {
+        i_font_size = (int) p_filter->fmt_out.video.i_height * p_style->f_font_relsize;
+    }
+    return i_font_size;
+}
+
 FT_Face LoadFace( filter_t *p_filter,
-                  const text_style_t *p_style )
+                  const text_style_t *p_style, int i_font_size )
 {
     filter_sys_t *p_sys = p_filter->p_sys;
 
     faces_cache_t *p_cache = &p_sys->faces_cache;
     for( int i = 0; i < p_cache->i_faces_count; ++i )
         if( FaceStyleEquals( &p_cache->p_styles[ i ], p_style )
-         && p_cache->p_styles[ i ].i_font_size == p_style->i_font_size
+         && p_cache->p_styles[ i ].i_font_size == i_font_size
          && !( ( p_cache->p_styles[ i ].i_style_flags ^ p_style->i_style_flags ) & STYLE_HALFWIDTH ) )
             return p_cache->p_faces[ i ];
 
@@ -1430,12 +1434,12 @@ FT_Face LoadFace( filter_t *p_filter,
     }
 
     int i_font_width = p_style->i_style_flags & STYLE_HALFWIDTH
-                     ? p_style->i_font_size / 2 : p_style->i_font_size;
+                     ? i_font_size / 2 : i_font_size;
 
-    if( FT_Set_Pixel_Sizes( p_face, i_font_width, p_style->i_font_size ) )
+    if( FT_Set_Pixel_Sizes( p_face, i_font_width, i_font_size ) )
     {
         msg_Err( p_filter,
-                 "Failed to set font size to %d", p_style->i_font_size );
+                 "Failed to set font size to %d", i_font_size );
         FT_Done_Face( p_face );
         return NULL;
     }
@@ -1465,7 +1469,7 @@ FT_Face LoadFace( filter_t *p_filter,
     }
 
     text_style_t *p_face_style = p_cache->p_styles + p_cache->i_faces_count;
-    p_face_style->i_font_size = p_style->i_font_size;
+    p_face_style->i_font_size = i_font_size;
     p_face_style->i_style_flags = p_style->i_style_flags;
     p_face_style->psz_fontname = strdup( psz_fontname );
     p_cache->p_faces[ p_cache->i_faces_count ] = p_face;

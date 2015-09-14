@@ -244,7 +244,7 @@ static void lavc_CopyPicture(decoder_t *dec, picture_t *pic, AVFrame *frame)
         }
     }
 
-    if (unlikely(sys->p_context->pix_fmt == PIX_FMT_PAL8))
+    if (unlikely(sys->p_context->pix_fmt == AV_PIX_FMT_PAL8))
     {
         if (pic->format.p_palette == NULL)
             pic->format.p_palette = calloc(1, sizeof (video_palette_t));
@@ -494,9 +494,6 @@ int InitVideoDec( decoder_t *p_dec, AVCodecContext *p_context,
     }
 
     p_dec->pf_decode_video = DecodeVideo;
-
-    if ( p_dec->fmt_in.i_codec == VLC_CODEC_VP9 )
-        p_dec->b_need_packetized = true;
 
     return VLC_SUCCESS;
 }
@@ -980,7 +977,7 @@ static int lavc_dr_GetFrame(struct AVCodecContext *ctx, AVFrame *frame,
     decoder_t *dec = (decoder_t *)ctx->opaque;
     decoder_sys_t *sys = dec->p_sys;
 
-    if (ctx->pix_fmt == PIX_FMT_PAL8)
+    if (ctx->pix_fmt == AV_PIX_FMT_PAL8)
         goto error;
 
     int width = frame->width;
@@ -1112,7 +1109,7 @@ static enum PixelFormat ffmpeg_GetFormat( AVCodecContext *p_context,
     enum PixelFormat swfmt = avcodec_default_get_format(p_context, pi_fmt);
     bool can_hwaccel = false;
 
-    for( size_t i = 0; pi_fmt[i] != PIX_FMT_NONE; i++ )
+    for( size_t i = 0; pi_fmt[i] != AV_PIX_FMT_NONE; i++ )
     {
         const AVPixFmtDescriptor *dsc = av_pix_fmt_desc_get(pi_fmt[i]);
         if (dsc == NULL)
@@ -1130,7 +1127,7 @@ static enum PixelFormat ffmpeg_GetFormat( AVCodecContext *p_context,
 
     wait_mt(p_sys);
 
-    for( size_t i = 0; pi_fmt[i] != PIX_FMT_NONE; i++ )
+    for( size_t i = 0; pi_fmt[i] != AV_PIX_FMT_NONE; i++ )
     {
         enum PixelFormat hwfmt = pi_fmt[i];
 

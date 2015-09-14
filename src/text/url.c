@@ -271,12 +271,9 @@ char *make_path (const char *url)
     size_t schemelen = ((end != NULL) ? end : path) - url;
     path += 3; /* skip "://" */
 
-    /* Remove HTML anchor if present */
-    end = strchr (path, '#');
-    if (end)
-        path = strndup (path, end - path);
-    else
-        path = strdup (path);
+    /* Remove request parameters and/or HTML anchor if present */
+    end = path + strcspn (path, "?#");
+    path = strndup (path, end - path);
     if (unlikely(path == NULL))
         return NULL; /* boom! */
 
@@ -353,13 +350,11 @@ static char *vlc_idna_to_ascii (const char *);
  * Splits an URL into parts.
  * \param url structure of URL parts [OUT]
  * \param str nul-terminated URL string to split
- * \param opt if non-zero, character separating paths from options,
- *            normally the question mark
  * \note Use vlc_UrlClean() to free associated resources
  * \bug Errors cannot be detected.
  * \return nothing
  */
-void vlc_UrlParse (vlc_url_t *restrict url, const char *str, unsigned char opt)
+void vlc_UrlParse (vlc_url_t *restrict url, const char *str)
 {
     url->psz_protocol = NULL;
     url->psz_username = NULL;
@@ -398,17 +393,20 @@ void vlc_UrlParse (vlc_url_t *restrict url, const char *str, unsigned char opt)
         cur = next;
     }
 
+    /* Query parameters */
+    char *query = strchr (cur, '?');
+    if (query != NULL)
+    {
+        *(query++) = '\0';
+        url->psz_option = query;
+    }
+
     /* Path */
     next = strchr (cur, '/');
     if (next != NULL)
     {
         *next = '\0'; /* temporary nul, reset to slash later */
         url->psz_path = next;
-        if (opt && (next = strchr (next + 1, opt)) != NULL)
-        {
-            *(next++) = '\0';
-            url->psz_option = next;
-        }
     }
     /*else
         url->psz_path = "/";*/

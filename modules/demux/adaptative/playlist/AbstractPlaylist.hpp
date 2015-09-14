@@ -55,17 +55,16 @@ namespace adaptative
 
                 void                mergeWith(AbstractPlaylist *, mtime_t = 0);
                 void                pruneBySegmentNumber(uint64_t);
-                void                getTimeLinesBoundaries(mtime_t *, mtime_t *) const;
                 void                getPlaylistDurationsRange(mtime_t *, mtime_t *) const;
 
                 Property<mtime_t>                   duration;
                 Property<time_t>                    playbackStart;
                 Property<time_t>                    availabilityEndTime;
                 Property<time_t>                    availabilityStartTime;
-                Property<time_t>                    minUpdatePeriod;
+                Property<mtime_t>                   minUpdatePeriod;
                 Property<mtime_t>                   maxSegmentDuration;
-                Property<time_t>                    minBufferTime;
-                Property<time_t>                    timeShiftBufferDepth;
+                Property<mtime_t>                   minBufferTime;
+                Property<mtime_t>                   timeShiftBufferDepth;
 
             protected:
                 stream_t                           *stream;

@@ -978,7 +978,7 @@ error:
 
     if( p_sys->p_root )
     {
-        MP4_BoxFree( p_demux->s, p_sys->p_root );
+        MP4_BoxFree( p_sys->p_root );
     }
     free( p_sys );
     return VLC_EGENERIC;
@@ -1586,8 +1586,14 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
                     char rgsz_location[12];
                     snprintf( rgsz_location, 12, "%4.4s[%"PRIu16"]", (char*)&rgi_pict_atoms[i],
                               (uint16_t) i_box_count - 1 );
-                    (*ppp_attach)[i_count++] = vlc_input_attachment_New( rgsz_location, "image/x-pict",
+                    (*ppp_attach)[i_count] = vlc_input_attachment_New( rgsz_location, "image/x-pict",
                         "Quickdraw image", p_pict->data.p_binary->p_blob, p_pict->data.p_binary->i_blob );
+                    if ( !(*ppp_attach)[i_count] )
+                    {
+                        i_count = 0;
+                        break;
+                    }
+                    i_count++;
                     msg_Dbg( p_demux, "adding attachment %s", rgsz_location );
                 }
             }
@@ -1724,7 +1730,7 @@ static void Close ( vlc_object_t * p_this )
 
     msg_Dbg( p_demux, "freeing all memory" );
 
-    MP4_BoxFree( p_demux->s, p_sys->p_root );
+    MP4_BoxFree( p_sys->p_root );
     for( i_track = 0; i_track < p_sys->i_tracks; i_track++ )
     {
         MP4_TrackDestroy( p_demux, &p_sys->track[i_track] );
@@ -3912,7 +3918,7 @@ static int MP4_frg_GetChunks( demux_t *p_demux, const unsigned i_tk_id )
         uint32_t tid = 0;
         if( i_type == ATOM_uuid || i_type == ATOM_ftyp )
         {
-            MP4_BoxFree( p_demux->s, p_sys->p_root );
+            MP4_BoxFree( p_sys->p_root );
             p_sys->p_root = p_chunk;
 
             if( i_type == ATOM_ftyp ) /* DASH */
@@ -3948,7 +3954,7 @@ static int MP4_frg_GetChunks( demux_t *p_demux, const unsigned i_tk_id )
         if( MP4_frg_GetChunk( p_demux, p_chunk, &tid ) != VLC_SUCCESS )
             goto MP4_frg_GetChunks_Error;
 
-        MP4_BoxFree( p_demux->s, p_chunk );
+        MP4_BoxFree( p_chunk );
 
         if( tid == i_tk_id )
             break;
@@ -3956,7 +3962,7 @@ static int MP4_frg_GetChunks( demux_t *p_demux, const unsigned i_tk_id )
             continue;
 
 MP4_frg_GetChunks_Error:
-        MP4_BoxFree( p_demux->s, p_chunk );
+        MP4_BoxFree( p_chunk );
         return VLC_EGENERIC;
     }
 
@@ -4437,7 +4443,8 @@ static int ProbeIndex( demux_t *p_demux )
              stream_Seek( p_demux->s, i_stream_size - i_offset ) == VLC_SUCCESS )
         {
             msg_Dbg( p_demux, "reading mfra index at %"PRIu64, i_stream_size - i_offset );
-            MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, ATOM_mfra );
+            const uint32_t stoplist[] = { ATOM_mfra, 0 };
+            MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, stoplist );
         }
     }
 
@@ -4456,14 +4463,15 @@ static int ProbeFragments( demux_t *p_demux, bool b_force )
 
     if ( p_sys->b_fastseekable || b_force )
     {
-        MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, 0 ); /* Get the rest of the file */
+        MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, NULL ); /* Get the rest of the file */
         p_sys->b_fragments_probed = true;
     }
     else
     {
         /* We stop at first moof, which validates our fragmentation condition
          * and we'll find others while reading. */
-        MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, ATOM_moof );
+        const uint32_t stoplist[] = { ATOM_moof, 0 };
+        MP4_ReadBoxContainerChildren( p_demux->s, p_sys->p_root, stoplist );
     }
 
     if ( !p_sys->moovfragment.p_moox )
@@ -5239,7 +5247,7 @@ static int DemuxAsLeaf( demux_t *p_demux )
 
                 if(!p_fragbox)
                 {
-                    MP4_BoxFree( p_demux->s, p_vroot );
+                    MP4_BoxFree( p_vroot );
                     msg_Err(p_demux, "no moof or moov in current chunk");
                     return 1;
                 }
@@ -5283,7 +5291,7 @@ static int DemuxAsLeaf( demux_t *p_demux )
                         p_vroot->p_first = p_cur->p_next;
                         p_cur->p_next = NULL;
                         msg_Dbg(p_demux, "ignoring box %4.4s", (char*)&p_cur->i_type);
-                        MP4_BoxFree( p_demux->s, p_cur );
+                        MP4_BoxFree( p_cur );
                     }
                 }
                 p_fragbox->p_next = NULL;
@@ -5294,7 +5302,7 @@ static int DemuxAsLeaf( demux_t *p_demux )
                 /* Append to root */
                 p_sys->p_root->p_last->p_next = p_fragbox;
                 p_sys->p_root->p_last = p_fragbox;
-                MP4_BoxFree( p_demux->s, p_vroot );
+                MP4_BoxFree( p_vroot );
             }
             else
             {

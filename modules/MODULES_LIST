@@ -22,6 +22,7 @@ $Id$
  * access_output_udp: UDP Network access_output module
  * access_realrtsp: Real RTSP access
  * access_wasapi: WASAPI audio input
+ * accesstweaks: access control tweaking module (dev tool)
  * adaptative: Unified adaptative streaming module (DASH/HLS)
  * addonsfsstorage: Local storage extensions repository
  * addonsvorepository: Videolan extensions repository
@@ -66,6 +67,8 @@ $Id$
  * bonjour: Zeroconf services discovery
  * bpg: BPG image decoder using libbpg
  * caca: color ASCII art video output using libcaca
+ * cache_block: block stream caching stream filter
+ * cache_read: byte stream caching stream filter
  * caf: CAF demuxer
  * canvas: Automatically resize and padd a video
  * caopengllayer: CoreAnimation OpenGL video output
@@ -159,7 +162,6 @@ $Id$
  * glwin32: a opengl provider using DirectX OpenGL
  * glx: GLX extension for OpenGL
  * gme: old console games music playback using Game Music Emu
- * gnomevfs: GnomeVFS access
  * gnutls: GNU TLS encryption/decryption module
  * goom: visualisation plugin based on goom
  * gradfun: Gradfun video effects filter
@@ -285,6 +287,7 @@ $Id$
  * podcast: podcast feed parser
  * posterize: posterize video filter
  * postproc: Video post processing filter
+ * prefetch: Stream prefetching stream filter
  * projectm: visualisation using libprojectM
  * ps: input module for MPEG PS decapsulation
  * psychedelic: Psychedelic video filter

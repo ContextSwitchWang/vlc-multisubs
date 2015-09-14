@@ -65,8 +65,9 @@ typedef struct HwBuffer
 {
     vlc_thread_t    dequeue_thread;
     bool            b_run;
+    vlc_mutex_t     lock;
     vlc_cond_t      wait;
-    picture_t**     inflight_picture; /**< stores the inflight picture for each output buffer or NULL */
+    picture_sys_t** inflight_picture; /**< stores the inflight picture for each output buffer or NULL */
 
     unsigned int    i_buffers;
     void            **pp_handles;
@@ -119,6 +120,7 @@ struct decoder_sys_t
     char psz_component[OMX_MAX_STRINGNAME_SIZE];
     char ppsz_components[MAX_COMPONENTS_LIST_SIZE][OMX_MAX_STRINGNAME_SIZE];
     unsigned int components;
+    int i_quirks;
 
     OmxEventQueue event_queue;
 

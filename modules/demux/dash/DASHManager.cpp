@@ -78,7 +78,7 @@ bool DASHManager::updatePlaylist()
     if(!playlist->isLive() || !playlist->minUpdatePeriod.Get())
         return true;
 
-    mtime_t now = time(NULL);
+    time_t now = time(NULL);
     if(nextPlaylistupdate && now < nextPlaylistupdate)
         return true;
 
@@ -98,7 +98,7 @@ bool DASHManager::updatePlaylist()
         if(!mpdstream)
         {
             free(p_data);
-            nextPlaylistupdate = now + playlist->minUpdatePeriod.Get();
+            nextPlaylistupdate = now + playlist->minUpdatePeriod.Get() / CLOCK_FREQ;
             return false;
         }
 
@@ -106,7 +106,7 @@ bool DASHManager::updatePlaylist()
         if(!parser.parse())
         {
             stream_Delete(mpdstream);
-            nextPlaylistupdate = now + playlist->minUpdatePeriod.Get();
+            nextPlaylistupdate = now + playlist->minUpdatePeriod.Get() / CLOCK_FREQ;
             return false;
         }
 
@@ -133,20 +133,21 @@ bool DASHManager::updatePlaylist()
     /* Compute new MPD update time */
     mtime_t mininterval = 0;
     mtime_t maxinterval = 0;
-    playlist->getTimeLinesBoundaries(&mininterval, &maxinterval);
-    if(maxinterval > mininterval)
-        maxinterval = (maxinterval - mininterval);
-    else
-        maxinterval = 60 * CLOCK_FREQ;
-    maxinterval = std::max(maxinterval, (mtime_t)60 * CLOCK_FREQ);
+    playlist->getPlaylistDurationsRange(&mininterval, &maxinterval);
 
-    mininterval = std::max(playlist->minUpdatePeriod.Get() * CLOCK_FREQ,
-                           playlist->maxSegmentDuration.Get());
+    if(playlist->minUpdatePeriod.Get() > mininterval)
+        mininterval = playlist->minUpdatePeriod.Get();
 
-    nextPlaylistupdate = now + (maxinterval - mininterval) / (2 * CLOCK_FREQ);
+    if(mininterval < 5 * CLOCK_FREQ)
+        mininterval = 5 * CLOCK_FREQ;
+
+    if(maxinterval < mininterval)
+        maxinterval = mininterval;
+
+    nextPlaylistupdate = now + (mininterval + (maxinterval - mininterval) / 2) / CLOCK_FREQ;
 
     msg_Dbg(p_demux, "Updated MPD, next update in %" PRId64 "s (%" PRId64 "..%" PRId64 ")",
-            nextPlaylistupdate - now, mininterval, maxinterval );
+            nextPlaylistupdate - now, mininterval/ CLOCK_FREQ, maxinterval/ CLOCK_FREQ );
 
     return true;
 }

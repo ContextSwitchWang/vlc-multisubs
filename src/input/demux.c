@@ -25,7 +25,6 @@
 # include "config.h"
 #endif
 
-#include "access.h"
 #include "demux.h"
 #include <libvlc.h>
 #include <vlc_codec.h>
@@ -324,11 +323,8 @@ int demux_vaControlHelper( stream_t *s,
             return stream_vaControl( s, STREAM_GET_META, args );
 
         case DEMUX_IS_PLAYLIST:
-        {
-            bool *pb_isplaylist = va_arg( args, bool * );
-            return stream_Control( s, STREAM_IS_DIRECTORY, pb_isplaylist,
-                                   NULL, NULL );
-        }
+            *va_arg( args, bool * ) = false;
+            return VLC_SUCCESS;
 
         case DEMUX_GET_PTS_DELAY:
         case DEMUX_GET_FPS:

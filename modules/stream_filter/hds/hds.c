@@ -144,7 +144,6 @@ struct stream_sys_t
     size_t       flv_header_len;
     size_t       flv_header_bytes_sent;
     uint64_t     duration_seconds;
-    uint64_t     playback_offset;
 
     bool         live;
     bool         closed;
@@ -831,6 +830,8 @@ static uint8_t* download_chunk( stream_t *s,
 
     int read = stream_Read( download_stream, data,
                             size );
+    if( read < 0 )
+        read = 0;
     chunk->data_len = read;
 
     if( read < size )
@@ -1662,6 +1663,7 @@ static int Open( vlc_object_t *p_this )
     }
 
     s->pf_read = Read;
+    s->pf_seek = NULL;
     s->pf_control = Control;
 
     if( vlc_clone( &p_sys->dl_thread, download_thread, s, VLC_THREAD_PRIORITY_INPUT ) )
@@ -1734,9 +1736,7 @@ static int send_flv_header( hds_stream_t *stream, stream_sys_t* p_sys,
 static unsigned read_chunk_data(
     vlc_object_t* p_this,
     uint8_t* buffer, unsigned read_len,
-    hds_stream_t* stream,
-    bool* eof
-    )
+    hds_stream_t* stream )
 {
     stream_t* s = (stream_t*) p_this;
     stream_sys_t* sys = s->p_sys;
@@ -1744,10 +1744,8 @@ static unsigned read_chunk_data(
     uint8_t* buffer_start = buffer;
     bool dl = false;
 
-    if( chunk && chunk->eof && chunk->mdat_pos >= chunk->mdat_len ) {
-        *eof = true;
+    if( chunk && chunk->eof && chunk->mdat_pos >= chunk->mdat_len )
         return 0;
-    }
 
     while( chunk && chunk->data && read_len > 0 && ! (chunk->eof && chunk->mdat_pos >= chunk->mdat_len ) )
     {
@@ -1771,11 +1769,6 @@ static unsigned read_chunk_data(
 
         if( ! sys->live && (chunk->mdat_pos >= chunk->mdat_len || chunk->failed) )
         {
-            if( chunk->eof )
-            {
-                *eof = true;
-            }
-
             /* make sure there is at least one chunk in the queue */
             if( ! chunk->next && ! chunk->eof )
             {
@@ -1845,32 +1838,16 @@ static ssize_t Read( stream_t *s, void *buffer, size_t i_read )
 
     if ( vlc_array_count( p_sys->hds_streams ) == 0 )
         return 0;
+    if( unlikely(i_read == 0) )
+        return 0;
 
     // TODO: change here for selectable stream
     hds_stream_t *stream = s->p_sys->hds_streams->pp_elems[0];
-    int length = 0;
-
-    uint8_t *buffer_uint8 = (uint8_t*) buffer;
 
     if ( header_unfinished( p_sys ) )
-    {
-        unsigned hdr_bytes = send_flv_header( stream, p_sys, buffer, i_read );
-        length += hdr_bytes;
-        i_read -= hdr_bytes;
-        buffer_uint8 += hdr_bytes;
-    }
+        return send_flv_header( stream, p_sys, buffer, i_read );
 
-    bool eof = false;
-    while( i_read > 0 && ! eof )
-    {
-        int tmp_length = read_chunk_data( (vlc_object_t*)s, buffer_uint8, i_read, stream, &eof );
-        buffer_uint8 += tmp_length;
-        i_read -= tmp_length;
-        length += tmp_length;
-        p_sys->playback_offset += tmp_length;
-    }
-
-    return length;
+    return read_chunk_data( (vlc_object_t*)s, buffer, i_read, stream );
 }
 
 static int Control( stream_t *s, int i_query, va_list args )
@@ -1891,9 +1868,6 @@ static int Control( stream_t *s, int i_query, va_list args )
             *va_arg (args, int64_t *) = INT64_C(1000) *
                 var_InheritInteger(s, "network-caching");
              break;
-        case STREAM_GET_POSITION:
-            *(va_arg (args, uint64_t *)) = s->p_sys->playback_offset;
-            break;
         case STREAM_GET_SIZE:
             *(va_arg (args, uint64_t *)) = get_stream_size(s);
             break;

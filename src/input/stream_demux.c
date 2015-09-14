@@ -40,8 +40,6 @@ struct stream_sys_t
     block_fifo_t *p_fifo;
     block_t      *p_block;
 
-    uint64_t    i_pos;
-
     /* Demuxer */
     char        *psz_name;
     es_out_t    *out;
@@ -70,23 +68,18 @@ stream_t *stream_DemuxNew( demux_t *p_demux, const char *psz_demux, es_out_t *ou
     stream_t     *s;
     stream_sys_t *p_sys;
 
-    s = stream_CommonNew( p_obj );
+    s = stream_CommonNew( p_obj, DStreamDelete );
     if( s == NULL )
         return NULL;
     s->p_input = p_demux->p_input;
     s->pf_read   = DStreamRead;
+    s->pf_seek   = NULL;
     s->pf_control= DStreamControl;
-    s->pf_destroy= DStreamDelete;
 
     s->p_sys = p_sys = malloc( sizeof( *p_sys) );
-    if( !s->p_sys )
-    {
-        free( p_sys );
-        stream_CommonDelete( s );
-        return NULL;
-    }
+    if( unlikely(p_sys == NULL) )
+        goto error;
 
-    p_sys->i_pos = 0;
     p_sys->out = out;
     p_sys->p_block = NULL;
     p_sys->psz_name = strdup( psz_demux );
@@ -97,10 +90,8 @@ stream_t *stream_DemuxNew( demux_t *p_demux, const char *psz_demux, es_out_t *ou
     /* decoder fifo */
     if( ( p_sys->p_fifo = block_FifoNew() ) == NULL )
     {
-        stream_CommonDelete( s );
         free( p_sys->psz_name );
-        free( p_sys );
-        return NULL;
+        goto error;
     }
 
     atomic_init( &p_sys->active, true );
@@ -110,13 +101,15 @@ stream_t *stream_DemuxNew( demux_t *p_demux, const char *psz_demux, es_out_t *ou
     {
         vlc_mutex_destroy( &p_sys->lock );
         block_FifoRelease( p_sys->p_fifo );
-        stream_CommonDelete( s );
         free( p_sys->psz_name );
-        free( p_sys );
-        return NULL;
+        goto error;
     }
 
     return s;
+error:
+    free( p_sys );
+    stream_CommonDelete( s );
+    return NULL;
 }
 
 void stream_DemuxSend( stream_t *s, block_t *p_block )
@@ -169,55 +162,44 @@ static void DStreamDelete( stream_t *s )
     block_FifoRelease( p_sys->p_fifo );
     free( p_sys->psz_name );
     free( p_sys );
-    stream_CommonDelete( s );
 }
 
 
-static ssize_t DStreamRead( stream_t *s, void *p_read, size_t i_read )
+static ssize_t DStreamRead( stream_t *s, void *buf, size_t len )
 {
-    stream_sys_t *p_sys = s->p_sys;
-    uint8_t *p_out = p_read;
-    size_t i_out = 0;
+    stream_sys_t *sys = s->p_sys;
+
+    if( !atomic_load( &sys->active ) )
+        return -1;
+    if( len == 0 )
+        return 0;
 
     //msg_Dbg( s, "DStreamRead: wanted %d bytes", i_read );
 
-    while( atomic_load( &p_sys->active ) && !s->b_error && i_read )
+    block_t *block = sys->p_block;
+    if( block == NULL )
     {
-        block_t *p_block = p_sys->p_block;
-        size_t i_copy;
-
-        if( !p_block )
-        {
-            p_block = block_FifoGet( p_sys->p_fifo );
-            if( !p_block ) s->b_error = 1;
-            p_sys->p_block = p_block;
-        }
-
-        if( p_block && i_read )
-        {
-            i_copy = __MIN( i_read, p_block->i_buffer );
-            if( p_out && i_copy ) memcpy( p_out, p_block->p_buffer, i_copy );
-            i_read -= i_copy;
-            if ( p_out ) p_out += i_copy;
-            i_out += i_copy;
-            p_block->i_buffer -= i_copy;
-            p_block->p_buffer += i_copy;
-
-            if( !p_block->i_buffer )
-            {
-                block_Release( p_block );
-                p_sys->p_block = NULL;
-            }
-        }
+        block = block_FifoGet( sys->p_fifo );
+        sys->p_block = block;
     }
 
-    p_sys->i_pos += i_out;
-    return i_out;
+    size_t copy = __MIN( len, block->i_buffer );
+    if( buf != NULL && copy > 0 )
+        memcpy( buf, block->p_buffer, copy );
+
+    block->p_buffer += copy;
+    block->i_buffer -= copy;
+    if( block->i_buffer == 0 )
+    {
+        block_Release( block );
+        sys->p_block = NULL;
+    }
+
+    return copy;
 }
 
 static int DStreamControl( stream_t *s, int i_query, va_list args )
 {
-    stream_sys_t *p_sys = s->p_sys;
     uint64_t    *p_i64;
 
     switch( i_query )
@@ -233,28 +215,6 @@ static int DStreamControl( stream_t *s, int i_query, va_list args )
         case STREAM_CAN_CONTROL_PACE:
             *va_arg( args, bool * ) = false;
             return VLC_SUCCESS;
-
-        case STREAM_GET_POSITION:
-            p_i64 = va_arg( args, uint64_t * );
-            *p_i64 = p_sys->i_pos;
-            return VLC_SUCCESS;
-
-        case STREAM_SET_POSITION:
-        {
-            uint64_t i64 = va_arg( args, uint64_t );
-            if( i64 < p_sys->i_pos )
-                return VLC_EGENERIC;
-
-            uint64_t i_skip = i64 - p_sys->i_pos;
-            while( i_skip > 0 )
-            {
-                int i_read = DStreamRead( s, NULL, __MIN(i_skip, INT_MAX) );
-                if( i_read <= 0 )
-                    return VLC_EGENERIC;
-                i_skip -= i_read;
-            }
-            return VLC_SUCCESS;
-        }
 
         case STREAM_GET_PTS_DELAY:
             *va_arg( args, int64_t * ) = DEFAULT_PTS_DELAY;

@@ -1,3 +1,26 @@
+/*****************************************************************************
+ * subsdec.c : text subtitle decoder
+ *****************************************************************************
+ * Copyright © 2011-2015 VLC authors and VideoLAN
+ *
+ * Authors: Laurent Aimer <fenrir@videolan.org>
+ *          Jean-Baptiste Kempf <jb@videolan.org>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
+ *****************************************************************************/
+
 #include <vlc_strings.h>
 #include <vlc_text_style.h>
 
@@ -11,7 +34,8 @@ struct subpicture_updater_sys_t {
     bool is_fixed;
     int  fixed_width;
     int  fixed_height;
-    bool renderbg;
+    bool noregionbg;
+    bool gridmode;
 
     /* styling */
     text_style_t *p_default_style; /* decoder (full or partial) defaults */
@@ -63,9 +87,10 @@ static void SubpictureTextUpdate(subpicture_t *subpic,
     if (!r)
         return;
 
-    r->p_text = sys->p_segments;
+    r->p_text = text_segment_Copy( sys->p_segments );
     r->i_align  = sys->align;
-    r->b_renderbg = sys->renderbg;
+    r->b_noregionbg = sys->noregionbg;
+    r->b_gridmode = sys->gridmode;
     if (!sys->is_fixed) {
         const float margin_ratio = 0.04;
         const int   margin_h     = margin_ratio * fmt_dst->i_visible_width;
@@ -89,7 +114,7 @@ static void SubpictureTextUpdate(subpicture_t *subpic,
     }
 
     /* Add missing default style, if any, to all segments */
-    for ( text_segment_t* p_segment = sys->p_segments; p_segment; p_segment = p_segment->p_next )
+    for ( text_segment_t* p_segment = r->p_text; p_segment; p_segment = p_segment->p_next )
     {
         /* Add decoder defaults */
         if( p_segment->style )
@@ -110,6 +135,7 @@ static void SubpictureTextDestroy(subpicture_t *subpic)
     subpicture_updater_sys_t *sys = subpic->updater.p_sys;
 
     text_segment_ChainDelete( sys->p_segments );
+    text_style_Delete( sys->p_default_style );
     free(sys);
 }
 

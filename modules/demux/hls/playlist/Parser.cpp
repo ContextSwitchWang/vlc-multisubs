@@ -186,8 +186,8 @@ void Parser::parseSegments(Representation *rep, const std::list<Tag *> &tagslist
 
     rep->timescale.Set(100);
 
-    int64_t totalduration = 0;
-    int64_t nzStartTime = 0;
+    stime_t totalduration = 0;
+    stime_t nzStartTime = 0;
     uint64_t sequenceNumber = 0;
     std::size_t prevbyterangeoffset = 0;
     const SingleValueTag *ctx_byterange = NULL;
@@ -298,9 +298,9 @@ void Parser::parseSegments(Representation *rep, const std::list<Tag *> &tagslist
     {
         rep->getPlaylist()->duration.Set(0);
     }
-    else if(totalduration > rep->getPlaylist()->duration.Get())
+    else if(totalduration * CLOCK_FREQ / rep->timescale.Get() > rep->getPlaylist()->duration.Get())
     {
-        rep->getPlaylist()->duration.Set(CLOCK_FREQ * totalduration / rep->timescale.Get());
+        rep->getPlaylist()->duration.Set(totalduration * CLOCK_FREQ / rep->timescale.Get());
     }
 }
 
@@ -312,6 +312,7 @@ M3U8 * Parser::parse(const std::string &playlisturl)
         free(psz_line);
         return NULL;
     }
+    free(psz_line);
 
     M3U8 *playlist = new (std::nothrow) M3U8(p_stream);
     if(!playlist)
@@ -444,7 +445,7 @@ std::list<Tag *> Parser::parseEntries(stream_t *stream)
                 }
                 else
                 {
-                    key = std::string(psz_line);
+                    key = std::string(psz_line + 1);
                 }
 
                 if(!key.empty())

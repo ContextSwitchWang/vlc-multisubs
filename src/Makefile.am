@@ -361,7 +361,6 @@ SOURCES_libvlc_common = \
 	input/input.c \
 	input/info.h \
 	input/meta.c \
-	input/access.h \
 	input/clock.h \
 	input/decoder.h \
 	input/demux.h \
@@ -378,7 +377,6 @@ SOURCES_libvlc_common = \
 	input/resource.c \
 	input/stats.c \
 	input/stream.c \
-	input/stream_access.c \
 	input/stream_demux.c \
 	input/stream_filter.c \
 	input/stream_memory.c \
@@ -512,13 +510,13 @@ SOURCES_libvlc = \
 # FourCC tables
 BUILT_SOURCES += fourcc_tables.h
 EXTRA_DIST += misc/fourcc_gen.c
-MOSTLYCLEANFILES = fourcc_gen
+MOSTLYCLEANFILES = fourcc_gen$(BUILDEXEEXT)
 
-fourcc_gen: misc/fourcc_gen.c misc/fourcc_list.h ../include/vlc_fourcc.h
+fourcc_gen$(BUILDEXEEXT): misc/fourcc_gen.c misc/fourcc_list.h ../include/vlc_fourcc.h
 	$(AM_V_at)rm -f -- $@
 	$(AM_V_CC)$(BUILDCC) -I$(srcdir) -o $@ $<
 
-fourcc_tables.h: fourcc_gen
+fourcc_tables.h: fourcc_gen$(BUILDEXEEXT)
 	$(AM_V_at)rm -f -- $@.tmp
 	$(AM_V_GEN)$(builddir)/fourcc_gen > $@.tmp
 	$(AM_V_at)mv -f -- $@.tmp $@

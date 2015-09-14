@@ -51,15 +51,15 @@ text_style_t *text_style_Create( int i_defaults )
     p_style->f_font_relsize = STYLE_DEFAULT_REL_FONT_SIZE;
     p_style->i_font_size = STYLE_DEFAULT_FONT_SIZE;
     p_style->i_font_color = 0xffffff;
-    p_style->i_font_alpha = 0xff;
+    p_style->i_font_alpha = STYLE_ALPHA_OPAQUE;
     p_style->i_outline_color = 0x000000;
-    p_style->i_outline_alpha = 0xff;
-    p_style->i_shadow_color = 0x000000;
-    p_style->i_shadow_alpha = 0xff;
-    p_style->i_background_color = 0xffffff;
-    p_style->i_background_alpha = 0x80;
+    p_style->i_outline_alpha = STYLE_ALPHA_OPAQUE;
+    p_style->i_shadow_color = 0x808080;
+    p_style->i_shadow_alpha = STYLE_ALPHA_OPAQUE;
+    p_style->i_background_color = 0x000000;
+    p_style->i_background_alpha = STYLE_ALPHA_OPAQUE;
     p_style->i_karaoke_background_color = 0xffffff;
-    p_style->i_karaoke_background_alpha = 0xff;
+    p_style->i_karaoke_background_alpha = STYLE_ALPHA_OPAQUE;
     p_style->i_outline_width = 1;
     p_style->i_shadow_width = 0;
     p_style->i_spacing = -1;
@@ -206,14 +206,22 @@ text_segment_t *text_segment_Copy( text_segment_t *p_src )
 {
     text_segment_t *p_dst = NULL, *p_dst0 = NULL;
 
-    while( p_src && p_src->p_next ) {
-        text_segment_t *p_next = text_segment_New( p_src->psz_text );
-        p_src = p_src->p_next;
+    while( p_src ) {
+        text_segment_t *p_new = text_segment_New( p_src->psz_text );
+        if( p_new )
+            p_new->style = text_style_Duplicate( p_src->style );
 
         if( p_dst == NULL )
-            p_dst = p_dst0 = p_next;
+        {
+            p_dst = p_dst0 = p_new;
+        }
         else
-            p_dst->p_next = p_next;
+        {
+            p_dst->p_next = p_new;
+            p_dst = p_dst->p_next;
+        }
+
+        p_src = p_src->p_next;
     }
 
     return p_dst0;

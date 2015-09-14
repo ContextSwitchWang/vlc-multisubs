@@ -92,9 +92,14 @@ static void test_url_parse(const char* in, const char* protocol, const char* use
                            const char* pass, const char* host, unsigned i_port,
                            const char* path, const char* option )
 {
-#define CHECK( a, b ) assert(((a == NULL) && (b == NULL)) || !strcmp((a), (b)))
+#define CHECK( a, b ) \
+    if (a == NULL) \
+        assert(b == NULL); \
+    else \
+        assert(b != NULL && !strcmp((a), (b)))
+
     vlc_url_t url;
-    vlc_UrlParse( &url, in, '?' );
+    vlc_UrlParse( &url, in );
     CHECK( url.psz_protocol, protocol );
     CHECK( url.psz_username, user );
     CHECK( url.psz_password, pass );
@@ -171,6 +176,10 @@ int main (void)
     test ("file:///", "/");
     test ("file://localhost/home/john/music%2Eogg", "/home/john/music.ogg");
     test ("file://localhost/home/john/text#ref", "/home/john/text");
+    test ("file://localhost/home/john/text?name=value", "/home/john/text");
+    test ("file://localhost/home/john/text?name=value#ref", "/home/john/text");
+    test ("file://?name=value", NULL);
+    test ("file:///?name=value", "/");
     test ("fd://0foobar", NULL);
     test ("fd://0#ref", "/dev/stdin");
     test ("fd://1", "/dev/stdout");
@@ -182,6 +191,10 @@ int main (void)
     test_url_parse("protocol://john:doe@1.2.3.4:567", "protocol", "john", "doe", "1.2.3.4", 567, NULL, NULL);
     test_url_parse("http://a.b/?opt=val", "http", NULL, NULL, "a.b", 0, "/", "opt=val");
     test_url_parse("p://u:p@host:123/a/b/c?o=v", "p", "u", "p", "host", 123, "/a/b/c", "o=v");
+    test_url_parse("p://?o=v", "p", NULL, NULL, "", 0, NULL, "o=v");
+    test_url_parse("p://h?o=v", "p", NULL, NULL, "h", 0, NULL, "o=v");
+    test_url_parse("p://h:123?o=v", "p", NULL, NULL, "h", 123, NULL, "o=v");
+    test_url_parse("p://u:p@h:123?o=v", "p", "u", "p", "h", 123, NULL, "o=v");
 
     return 0;
 }
