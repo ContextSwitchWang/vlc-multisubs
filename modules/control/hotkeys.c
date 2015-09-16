@@ -73,6 +73,8 @@ static void DisplayRate ( vout_thread_t *, float );
 static float AdjustRateFine( vlc_object_t *, const int );
 static void ClearChannels  ( intf_thread_t *, vout_thread_t * );
 
+static void SubtitleTrack(input_thread_t* , vout_thread_t* , const char*, const char*,const char*);
+static void SubtitleToggle(input_thread_t*, vout_thread_t*,  const char*, const char*, const char*);
 #define DisplayMessage(vout, ...) \
     do { \
         if (vout) \
@@ -90,6 +92,7 @@ vlc_module_begin ()
     set_description( N_("Hotkeys management interface") )
     set_capability( "interface", 0 )
     set_callbacks( Open, Close )
+    set_category( CAT_INTERFACE )
     set_category( CAT_INTERFACE )
     set_subcategory( SUBCAT_INTERFACE_HOTKEYS )
 
@@ -112,6 +115,8 @@ static int Open( vlc_object_t *p_this )
     p_sys->subtitle_delaybookmarks.i_time_audio = 0;
     p_sys->subtitle_delaybookmarks.i_time_subtitle = 0;
 
+    /*p_libvlc is a common member, when key-action is changed,
+    callback will happen, with old, new val, and  p_inf*/
     var_AddCallback( p_intf->p_libvlc, "key-action", ActionEvent, p_intf );
     return VLC_SUCCESS;
 }
@@ -556,97 +561,17 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
                 var_FreeList( &list, &list2 );
             }
             break;
+        case ACTIONID_SUBTITLE_TRACK2:
+            SubtitleTrack(p_input, p_vout, "spu-es2", "spu-choice2","2nd ");
+            break;
         case ACTIONID_SUBTITLE_TRACK:
-            if( p_input )
-            {
-                vlc_value_t val, list, list2;
-                int i_count, i;
-                var_Get( p_input, "spu-es", &val );
-
-                var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
-                            &list, &list2 );
-                i_count = list.p_list->i_count;
-                if( i_count <= 1 )
-                {
-                    DisplayMessage( p_vout, _("Subtitle track: %s"),
-                                    _("N/A") );
-                    var_FreeList( &list, &list2 );
-                    break;
-                }
-                for( i = 0; i < i_count; i++ )
-                {
-                    if( val.i_int == list.p_list->p_values[i].i_int )
-                    {
-                        break;
-                    }
-                }
-                /* value of spu-es was not in choices list */
-                if( i == i_count )
-                {
-                    msg_Warn( p_input,
-                              "invalid current subtitle track, selecting 0" );
-                    i = 0;
-                }
-                else if( i == i_count - 1 )
-                    i = 0;
-                else
-                    i++;
-                var_SetInteger( p_input, "spu-es", list.p_list->p_values[i].i_int );
-                var_SetInteger( p_input, "spu-choice", list.p_list->p_values[i].i_int );
-                DisplayMessage( p_vout, _("Subtitle track: %s"),
-                                list2.p_list->p_values[i].psz_string );
-                var_FreeList( &list, &list2 );
-            }
+            SubtitleTrack(p_input, p_vout, "spu-es", "spu-choice","");
+            break;
+        case ACTIONID_SUBTITLE_TOGGLE2:
+            SubtitleToggle(p_input, p_vout, "spu-es2", "spu-choice2","");
             break;
         case ACTIONID_SUBTITLE_TOGGLE:
-            if( p_input )
-            {
-                vlc_value_t list, list2;
-                int i_count, i_sel_index, i_sel_id, i_old_id, i_new_index;
-                i_old_id = var_GetInteger( p_input, "spu-es" );
-                i_sel_id = var_GetInteger( p_input, "spu-choice" );
-
-                var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
-                            &list, &list2 );
-                i_count = list.p_list->i_count;
-                if( i_count <= 1 )
-                {
-                    DisplayMessage( p_vout, _("Subtitle track: %s"),
-                                    _("N/A") );
-                    var_FreeList( &list, &list2 );
-                    break;
-                }
-                for( i_sel_index = 0; i_sel_index < i_count; i_sel_index++ )
-                {
-                    if( i_sel_id == list.p_list->p_values[i_sel_index].i_int )
-                    {
-                        break;
-                    }
-                }
-                /* if there is nothing to toggle choose the first track */
-                if( !i_sel_index ) {
-                    i_sel_index = 1;
-                    i_sel_id = list.p_list->p_values[1].i_int;
-                    var_SetInteger( p_input, "spu-choice", i_sel_id );
-                }
-
-                i_new_index = 0;
-                if( i_old_id != i_sel_id )
-                {
-                    if( i_sel_index >= i_count )
-                    {
-                        var_SetInteger( p_input, "spu-choice", list.p_list->p_values[0].i_int );
-                    }
-                    else
-                    {
-                        i_new_index = i_sel_index;
-                    }
-                }
-                var_SetInteger( p_input, "spu-es", list.p_list->p_values[i_new_index].i_int );
-                DisplayMessage( p_vout, _("Subtitle track: %s"),
-                                list2.p_list->p_values[i_new_index].psz_string );
-                var_FreeList( &list, &list2 );
-            }
+            SubtitleToggle(p_input, p_vout, "spu-es", "spu-choice","");
             break;
         case ACTIONID_PROGRAM_SID_NEXT:
         case ACTIONID_PROGRAM_SID_PREV:
@@ -1274,5 +1199,105 @@ static void ClearChannels( intf_thread_t *p_intf, vout_thread_t *p_vout )
     {
         vout_FlushSubpictureChannel( p_vout, SPU_DEFAULT_CHANNEL );
         vout_FlushSubpictureChannel( p_vout, p_intf->p_sys->slider_chan );
+    }
+}
+
+static void SubtitleTrack(input_thread_t* p_input, vout_thread_t * p_vout,
+                      const char* spu, const char* spuchoice, const char* prompt  )
+{
+    if( p_input )
+    {
+        vlc_value_t val, list, list2;
+        int i_count, i;
+        var_Get( p_input, spu, &val );
+
+        var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
+                    &list, &list2 );
+        i_count = list.p_list->i_count;
+        if( i_count <= 1 )
+        {
+            DisplayMessage( p_vout, _("%sSubtitle track: %s"),prompt,
+                            _("N/A") );
+            var_FreeList( &list, &list2 );
+            return;
+        }
+        for( i = 0; i < i_count; i++ )
+        {
+            if( val.i_int == list.p_list->p_values[i].i_int )
+            {
+                break;
+            }
+        }
+        /* value of spu-es was not in choices list */
+        if( i == i_count )
+        {
+            msg_Warn( p_input,
+                      "invalid current subtitle track, selecting 0" );
+            i = 0;
+        }
+        else if( i == i_count - 1 )
+            i = 0;
+        else
+            i++;
+        var_SetInteger( p_input, spu, list.p_list->p_values[i].i_int );
+        var_SetInteger( p_input, spuchoice, list.p_list->p_values[i].i_int );
+        DisplayMessage( p_vout, _("%sSubtitle track: %s"),prompt,
+                        list2.p_list->p_values[i].psz_string );
+        var_FreeList( &list, &list2 );
+    }
+    return;
+}
+static void SubtitleToggle(input_thread_t* p_input, vout_thread_t * p_vout,
+                    const char* spues, const char* spuchoice, const char* prompt  )
+{
+    if( p_input )
+    {
+        vlc_value_t list, list2;
+        int i_count, i_sel_index, i_sel_id, i_old_id, i_new_index;
+        i_old_id = var_GetInteger( p_input, spues );//id is always changing
+        i_sel_id = var_GetInteger( p_input, spuchoice );
+
+        var_Change( p_input, "spu-es", VLC_VAR_GETCHOICES,
+                    &list, &list2 );
+        i_count = list.p_list->i_count;
+
+        if( i_count <= 1 )// o is disable, >=1 are real tracks
+        {
+            DisplayMessage( p_vout, _("%sSubtitle track: %s"),prompt,
+                            _("N/A") );
+            var_FreeList( &list, &list2 );
+            return;
+        }
+        for( i_sel_index = 0; i_sel_index < i_count; i_sel_index++ )
+        {
+            if( i_sel_id == list.p_list->p_values[i_sel_index].i_int )
+            {
+                break;
+            }
+        }
+        /* if there is nothing to toggle choose the first track */
+        if( !i_sel_index )
+        {
+            i_sel_index = 1;
+            i_sel_id = list.p_list->p_values[1].i_int;
+            var_SetInteger(p_input, spuchoice, i_sel_id);
+        }
+
+        i_new_index = 0;
+        if( i_old_id != i_sel_id )
+        {
+            if( i_sel_index >= i_count )
+            {
+                 var_SetInteger( p_input, spuchoice, list.p_list->p_values[0].i_int );
+            }
+            else
+            {
+                 i_new_index = i_sel_index;
+            }
+        }
+        var_SetInteger( p_input, spues, list.p_list->p_values[i_new_index].i_int );
+        DisplayMessage( p_vout, _("%sSubtitle track: %s"), prompt,
+                                list2.p_list->p_values[i_new_index].psz_string );
+        var_FreeList( &list, &list2 );
     }
 }
