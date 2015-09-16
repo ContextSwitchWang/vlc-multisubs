@@ -264,7 +264,7 @@ found:
 struct action
 {
     char name[MAXACTION];
-    vlc_action_t value;
+    vlc_action_t value;//an enum
 };
 
 static const struct action actions[] =
@@ -358,6 +358,8 @@ static const struct action actions[] =
     { "subtitle-text-scale-up", ACTIONID_SUBTITLE_TEXT_SCALE_UP, },
     { "subtitle-toggle", ACTIONID_SUBTITLE_TOGGLE, },
     { "subtitle-track", ACTIONID_SUBTITLE_TRACK, },
+    { "subtitle2-toggle", ACTIONID_SUBTITLE_TOGGLE2, },//2 is larger
+    { "subtitle-track2", ACTIONID_SUBTITLE_TRACK2, },
     { "title-next", ACTIONID_TITLE_NEXT, },
     { "title-prev", ACTIONID_TITLE_PREV, },
     { "toggle-autoscale", ACTIONID_TOGGLE_AUTOSCALE, },
