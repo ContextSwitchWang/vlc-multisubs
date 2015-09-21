@@ -1796,14 +1796,24 @@ static bool Control( input_thread_t *p_input,
         case INPUT_CONTROL_SET_ES:
             /* No need to force update, es_out does it if needed */
             es_out_Control( p_input->p->p_es_out_display,
-                            ES_OUT_SET_ES_BY_ID, (int)val.i_int );
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 0);//1st es
+
+            demux_Control( p_input->p->input.p_demux, DEMUX_SET_ES, (int)val.i_int);
+            break;
+        case INPUT_CONTROL_SET_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 1);//2nd es
 
             demux_Control( p_input->p->input.p_demux, DEMUX_SET_ES, (int)val.i_int );
             break;
 
         case INPUT_CONTROL_RESTART_ES:
             es_out_Control( p_input->p->p_es_out_display,
-                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int );
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 0);
+            break;
+        case INPUT_CONTROL_RESTART_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 1);
             break;
 
         case INPUT_CONTROL_SET_AUDIO_DELAY:
@@ -2941,7 +2951,7 @@ static void input_SubtitleAdd( input_thread_t *p_input,
     }
     TAB_APPEND( p_input->p->i_slave, p_input->p->slave, sub );
 
-    if( !(i_flags & SUB_FORCED) )
+    if( !(i_flags & SUB_FORCED) )//one of them is false
         return;
 
     /* Select the ES */
@@ -2953,12 +2963,12 @@ static void input_SubtitleAdd( input_thread_t *p_input,
         count.i_int++;
     /* if it was first one, there is disable too */
 
-    if( count.i_int < list.p_list->i_count )
+    if( count.i_int < list.p_list->i_count )//the count must have been increased by other thread, in EsOutAdd
     {
         const int i_id = list.p_list->p_values[count.i_int].i_int;
 
-        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id );
-        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id,0 );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id, 0 );
     }
     var_FreeList( &list, NULL );
 }
