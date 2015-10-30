@@ -1768,7 +1768,7 @@ static bool Control( input_thread_t *p_input,
             es_out_Control( p_input->p->p_es_out_display,
                             ES_OUT_SET_ES_BY_ID, (int)val.i_int, 0);//1st es
 
-            demux_Control( p_input->p->input.p_demux, DEMUX_SET_ES, (int)val.i_int);
+            demux_Control( p_input->p->master->p_demux, DEMUX_SET_ES, (int)val.i_int);
             break;
         case INPUT_CONTROL_SET_ES2:
             es_out_Control( p_input->p->p_es_out_display,
