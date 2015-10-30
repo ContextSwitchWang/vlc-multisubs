@@ -282,11 +282,16 @@ void input_SendEventEsDel( input_thread_t *p_input, int i_cat, int i_id )
     if( i_cat != UNKNOWN_ES )
         VarListDel( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
 }
-/* i_id == -1 will unselect */
-void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id )
+/* i_id == -1 will unselect. we allow multi select using bit */
+void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id, int i_ret )
 {
     if( i_cat != UNKNOWN_ES )
-        VarListSelect( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
+    {
+        if(i_ret & 1)
+            VarListSelect( p_input, GetEsVarName( i_cat ), INPUT_EVENT_ES, i_id );
+        if(i_ret & 2 && i_cat == SPU_ES)
+             VarListSelect( p_input, "spu-es2", INPUT_EVENT_ES, i_id );
+    }
 }
 
 void input_SendEventTeletextAdd( input_thread_t *p_input,
