@@ -2167,7 +2167,7 @@ vlc_module_begin ()
 #   define KEY_AUDIODELAY_DOWN    "f"
 #   define KEY_AUDIO_TRACK        "l"
 #   define KEY_SUBTITLE_TRACK     "s"
-#   define KEY_SUBTITLE_TOGGLE    NULL 
+#   define KEY_SUBTITLE_TOGGLE    NULL
 #   define KEY_SUBTITLE_TRACK2    "Shift+s"
 #   define KEY_SUBTITLE_TOGGLE2   NULL
 #   define KEY_PROGRAM_SID_NEXT   "x"
