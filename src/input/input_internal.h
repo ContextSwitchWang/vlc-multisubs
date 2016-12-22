@@ -216,6 +216,8 @@ enum input_control_e
 
     INPUT_CONTROL_SET_ES,
     INPUT_CONTROL_RESTART_ES,
+    INPUT_CONTROL_SET_ES2,
+    INPUT_CONTROL_RESTART_ES2,
 
     INPUT_CONTROL_SET_VIEWPOINT,    // new absolute viewpoint
     INPUT_CONTROL_UPDATE_VIEWPOINT, // update viewpoint relative to current

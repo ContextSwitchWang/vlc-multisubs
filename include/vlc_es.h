@@ -500,6 +500,7 @@ struct subs_format_t
     } teletext;
 
     text_style_t *p_style; /* Default styles to use */
+    int i_ord; /*if a 2nd 3rd .. subtitle*/
 };
 
 /**

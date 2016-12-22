@@ -915,6 +915,7 @@ static void add_es_callbacks( input_thread_t *p_input_thread, libvlc_media_playe
     var_AddCallback( p_input_thread, "video-es", input_es_selected, p_mi );
     var_AddCallback( p_input_thread, "audio-es", input_es_selected, p_mi );
     var_AddCallback( p_input_thread, "spu-es", input_es_selected, p_mi );
+    var_AddCallback( p_input_thread, "spu-es2", input_es_selected, p_mi );
 }
 
 static void del_es_callbacks( input_thread_t *p_input_thread, libvlc_media_player_t *p_mi )
@@ -925,6 +926,7 @@ static void del_es_callbacks( input_thread_t *p_input_thread, libvlc_media_playe
     var_DelCallback( p_input_thread, "video-es", input_es_selected, p_mi );
     var_DelCallback( p_input_thread, "audio-es", input_es_selected, p_mi );
     var_DelCallback( p_input_thread, "spu-es", input_es_selected, p_mi );
+    var_DelCallback( p_input_thread, "spu-es2", input_es_selected, p_mi );
 }
 
 /**************************************************************************

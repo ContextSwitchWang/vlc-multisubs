@@ -1921,15 +1921,26 @@ static bool Control( input_thread_t *p_input,
 
         case INPUT_CONTROL_SET_ES:
             /* No need to force update, es_out does it if needed */
-            es_out_Control( input_priv(p_input)->p_es_out_display,
-                            ES_OUT_SET_ES_BY_ID, (int)val.i_int );
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 0);//1st es
+
+            demux_Control( p_input->p->master->p_demux, DEMUX_SET_ES, (int)val.i_int);
+            break;
+        case INPUT_CONTROL_SET_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_SET_ES_BY_ID, (int)val.i_int, 1);//2nd es
 
             demux_Control( input_priv(p_input)->master->p_demux, DEMUX_SET_ES, (int)val.i_int );
             break;
 
         case INPUT_CONTROL_RESTART_ES:
-            es_out_Control( input_priv(p_input)->p_es_out_display,
-                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int );
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 0);
+            break;
+        case INPUT_CONTROL_RESTART_ES2:
+            es_out_Control( p_input->p->p_es_out_display,
+                            ES_OUT_RESTART_ES_BY_ID, (int)val.i_int, 1);
+>>>>>>> origin/mac
             break;
 
         case INPUT_CONTROL_SET_VIEWPOINT:
@@ -3154,12 +3165,12 @@ static int input_SlaveSourceAdd( input_thread_t *p_input,
         count.i_int++;
     /* if it was first one, there is disable too */
 
-    if( count.i_int < list.p_list->i_count )
+    if( count.i_int < list.p_list->i_count )//the count must have been increased by other thread, in EsOutAdd
     {
         const int i_id = list.p_list->p_values[count.i_int].i_int;
 
-        es_out_Control( input_priv(p_input)->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id );
-        es_out_Control( input_priv(p_input)->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_DEFAULT_BY_ID, i_id, 0 );
+        es_out_Control( p_input->p->p_es_out_display, ES_OUT_SET_ES_BY_ID, i_id, 0 );
     }
     var_FreeList( &list, NULL );
 

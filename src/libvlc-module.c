@@ -581,6 +581,7 @@ static const char *const ppsz_clock_descriptions[] =
     "(from 0 to n).")
 
 #define INPUT_SUBTRACK_TEXT N_("Subtitle track")
+#define INPUT_SUBTRACK2_TEXT N_("2nd Subtitle track")
 #define INPUT_SUBTRACK_LONGTEXT N_( \
     "Stream number of the subtitle track to use " \
     "(from 0 to n).")
@@ -1358,8 +1359,10 @@ static const char *const mouse_wheel_texts[] = {
 #define AUDIO_TRACK_KEY_TEXT N_("Cycle audio track")
 #define AUDIO_TRACK_KEY_LONGTEXT N_("Cycle through the available audio tracks(languages).")
 #define SUBTITLE_TRACK_KEY_TEXT N_("Cycle subtitle track")
+#define SUBTITLE_TRACK2_KEY_TEXT N_("Cycle 2nd subtitle track")
 #define SUBTITLE_TRACK_KEY_LONGTEXT N_("Cycle through the available subtitle tracks.")
 #define SUBTITLE_TOGGLE_KEY_TEXT N_("Toggle subtitles")
+#define SUBTITLE2_TOGGLE_KEY_TEXT N_("Toggle 2nd subtitles")
 #define SUBTITLE_TOGGLE_KEY_LONGTEXT N_("Toggle subtitle track visibility.")
 #define PROGRAM_SID_NEXT_KEY_TEXT N_("Cycle next program Service ID")
 #define PROGRAM_SID_NEXT_KEY_LONGTEXT N_("Cycle through the available next program Service IDs (SIDs).")
@@ -1689,6 +1692,9 @@ vlc_module_begin ()
         change_safe ()
     add_integer( "sub-track", -1,
                  INPUT_SUBTRACK_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
+        change_safe ()
+    add_integer( "sub-track2", -1,
+                 INPUT_SUBTRACK2_TEXT, INPUT_SUBTRACK_LONGTEXT, true )
         change_safe ()
     add_string( "audio-language", "",
                  INPUT_AUDIOTRACK_LANG_TEXT, INPUT_AUDIOTRACK_LANG_LONGTEXT,
@@ -2199,7 +2205,9 @@ vlc_module_begin ()
 #   define KEY_AUDIODELAY_DOWN    "f"
 #   define KEY_AUDIO_TRACK        "l"
 #   define KEY_SUBTITLE_TRACK     "s"
-#   define KEY_SUBTITLE_TOGGLE    "Shift+s"
+#   define KEY_SUBTITLE_TOGGLE    NULL
+#   define KEY_SUBTITLE_TRACK2    "Shift+s"
+#   define KEY_SUBTITLE_TOGGLE2   NULL
 #   define KEY_PROGRAM_SID_NEXT   "x"
 #   define KEY_PROGRAM_SID_PREV   "Shift+x"
 #   define KEY_ASPECT_RATIO       "a"
@@ -2342,6 +2350,8 @@ vlc_module_begin ()
 #   define KEY_AUDIO_TRACK        "b"
 #   define KEY_SUBTITLE_TRACK     "v"
 #   define KEY_SUBTITLE_TOGGLE    "Shift+v"
+#   define KEY_SUBTITLE_TRACK2    "Ctrl+v"
+#   define KEY_SUBTITLE_TOGGLE2   NULL
 #   define KEY_PROGRAM_SID_NEXT   "x"
 #   define KEY_PROGRAM_SID_PREV   "Shift+x"
 #   define KEY_ASPECT_RATIO       "a"
@@ -2518,6 +2528,11 @@ vlc_module_begin ()
              SUBTITLE_TRACK_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
     add_key( "key-subtitle-toggle", KEY_SUBTITLE_TOGGLE,
              SUBTITLE_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
+    add_key( "key-subtitle-track2", KEY_SUBTITLE_TRACK2,
+             SUBTITLE_TRACK2_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
+    add_key( "key-subtitle2-toggle", KEY_SUBTITLE_TOGGLE2,
+             SUBTITLE2_TOGGLE_KEY_TEXT, SUBTITLE_TOGGLE_KEY_LONGTEXT, false )
+
     add_key( "key-program-sid-next", KEY_PROGRAM_SID_NEXT,
              PROGRAM_SID_NEXT_KEY_TEXT, PROGRAM_SID_NEXT_KEY_LONGTEXT, false )
     add_key( "key-program-sid-prev", KEY_PROGRAM_SID_PREV,

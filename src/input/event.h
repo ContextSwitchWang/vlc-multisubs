@@ -60,7 +60,7 @@ void input_SendEventProgramScrambled( input_thread_t *p_input, int i_group, bool
 
 void input_SendEventEsDel( input_thread_t *p_input, int i_cat, int i_id );
 void input_SendEventEsAdd( input_thread_t *p_input, int i_cat, int i_id, const char *psz_text );
-void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id ); /* i_id == -1 will unselect */
+void input_SendEventEsSelect( input_thread_t *p_input, int i_cat, int i_id, int i_ord ); /* i_id == -1 will unselect */
 
 void input_SendEventTeletextAdd( input_thread_t *p_input,
                                  int i_teletext, const char *psz_text );

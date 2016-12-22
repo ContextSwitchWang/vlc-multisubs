@@ -435,7 +435,11 @@ static subpicture_t *Decode( decoder_t *p_dec, block_t **pp_block )
     p_spu->b_ephemer  = (p_block->i_length == 0);
     p_spu->b_absolute = false;
 
-    p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM;
+    if(p_dec->fmt_in.subs.i_ord == 1)
+        p_spu_sys->align = SUBPICTURE_ALIGN_TOP;
+    else
+        p_spu_sys->align = SUBPICTURE_ALIGN_BOTTOM;
+
 
     FontSizeConvert( p_dec->fmt_in.subs.p_style,  p_spu_sys->p_default_style );
 
